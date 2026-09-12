@@ -29,6 +29,10 @@ app.get("/", (req, res) => {
   res.json({ message: "API is running..." });
 });
 
+app.get("/.well-known/appspecific/com.chrome.devtools.json", (req, res) => {
+  res.json({});
+});
+
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/products", productRoutes);
 app.use("/api/checkout", checkoutRoutes);
