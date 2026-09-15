@@ -15,3 +15,11 @@ seed*.js
 
 # misc
 .DS_Store
+
+# iphone data files
+iphone-18-pro.json
+iphone-dou.json
+iphone18promax.json
+update-iphone18promax-prices.js
+
+

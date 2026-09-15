@@ -1,85 +1,91 @@
 {
-    "name": "أبل آيفون Duo، 5G، 256 جيجابايت، برجاندي",
-    "brief": "تصميم مبتكر، وتجربة مختلفة تمامًا مع آيفون Duo الجديد.",
-    "description": "اكتشف تجربة جديدة مع آيفون Duo، المصمم ليجمع بين التصميم العصري والأداء القوي في جهاز واحد. يأتي بتصميم مبتكر يمنحك تجربة استخدام مميزة، مع شريحة A20 Pro لأداء سريع وسلس، وكاميرات متطورة لالتقاط صور وفيديوهات مذهلة في مختلف الظروف. سعة 256 جيجابايت تمنحك مساحة واسعة لتخزين صورك وملفاتك وتطبيقاتك، لتكون مستعدًا لكل لحظة.",
-    "originalPrice": 8679,
-    "salePrice": 8679,
-    "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185735/f2f7701d-2e46-442e-a831-b96e2dead50f_b4wmc3.webp",
-    "images": [
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185735/f2f7701d-2e46-442e-a831-b96e2dead50f_b4wmc3.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185737/a6da6f39-3e85-4d55-8202-3ae9c8c3c535_hz6sxt.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185731/3975db60-44df-4f73-b38a-daba6ecd227c_g1dd1q.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185847/d65eeb68-94eb-480a-a5f6-a186c5fd2e0c_thueve.webp"
-    ],
-    "variants": [
-        {
-            "name": "أبل آيفون Duo، 5G، أبيض نجمي",
-            "color": "Star White",
-            "colorCode": "#F5F5F0",
-            "defaultStorage": "256GB",
-            "images": [
-                "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185735/f2f7701d-2e46-442e-a831-b96e2dead50f_b4wmc3.webp",
-                "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185737/a6da6f39-3e85-4d55-8202-3ae9c8c3c535_hz6sxt.webp",
-                "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185731/3975db60-44df-4f73-b38a-daba6ecd227c_g1dd1q.webp",
+"name": "أبل آيفون Duo، 5G، 2 تيرابايت، سماء ليلي",
+"brief": "تصميم مبتكر، وتجربة مختلفة تمامًا مع آيفون Duo الجديد.",
+
+
+    "originalPrice": 15499,
+    "salePrice": 15499,
+    "image":
+                "https://res.cloudinary.com/dllmx2yf3/image/upload/v1789419484/9c1c34d8-f9b6-42fb-aa4a-0ba1ff312554_yvngal.jpg",
+       "images": [
+                "https://res.cloudinary.com/dllmx2yf3/image/upload/v1789419484/9c1c34d8-f9b6-42fb-aa4a-0ba1ff312554_yvngal.jpg",
+                "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185730/89ce8eaa-cef5-4e84-9a0d-ae0cada86e24_hadz0a.webp",
+                "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185742/3c1046ef-ad18-4ea7-ab44-2558ab8c175c_vtxpuh.webp",
+                "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185756/3ebb9e8b-81f1-450b-9e47-226df1f1a5ef_xmbwy1.webp",
                 "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185847/d65eeb68-94eb-480a-a5f6-a186c5fd2e0c_thueve.webp"
             ],
-            "storageOptions": [
-                {
-                    "storage": "256GB",
-                    "originalPrice": 8679,
-                    "salePrice": 8679
-                },
-                {
-                    "storage": "512GB",
-                    "originalPrice": 9547,
-                    "salePrice": 9547
-                },
-                {
-                    "storage": "1TB",
-                    "originalPrice": 11283,
-                    "salePrice": 11283
-                },
-                {
-                    "storage": "2TB",
-                    "originalPrice": 13888,
-                    "salePrice": 13888
-                }
-            ]
-        },
-        {
+    "variants": [
+         {
             "name": "أبل آيفون Duo، 5G، سماء ليلية",
             "color": "Night Sky",
             "colorCode": "#1D1D1F",
-            "defaultStorage": "256GB",
+            "defaultStorage": "2TB",
             "images": [
+                "https://res.cloudinary.com/dllmx2yf3/image/upload/v1789419484/9c1c34d8-f9b6-42fb-aa4a-0ba1ff312554_yvngal.jpg",
                 "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185730/89ce8eaa-cef5-4e84-9a0d-ae0cada86e24_hadz0a.webp",
                 "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185742/3c1046ef-ad18-4ea7-ab44-2558ab8c175c_vtxpuh.webp",
                 "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185756/3ebb9e8b-81f1-450b-9e47-226df1f1a5ef_xmbwy1.webp",
                 "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185847/d65eeb68-94eb-480a-a5f6-a186c5fd2e0c_thueve.webp"
             ],
             "storageOptions": [
-                {
+                  {
                     "storage": "256GB",
-                    "originalPrice": 8679,
-                    "salePrice": 8679
+                    "originalPrice": 9499,
+                    "salePrice": 9499
                 },
                 {
                     "storage": "512GB",
-                    "originalPrice": 9547,
-                    "salePrice": 9547
+                    "originalPrice": 10499,
+                    "salePrice": 10499
                 },
                 {
                     "storage": "1TB",
-                    "originalPrice": 11283,
-                    "salePrice": 11283
+                    "originalPrice": 12499,
+                    "salePrice": 12499
                 },
                 {
                     "storage": "2TB",
-                    "originalPrice": 13888,
-                    "salePrice": 13888
+                    "originalPrice": 15499,
+                    "salePrice": 15499
+                }
+            ]
+        },
+        {
+            "name": "أبل آيفون Duo، 5G، أبيض نجمي",
+            "color": "Star White",
+            "colorCode": "#F5F5F0",
+            "defaultStorage": "2TB",
+         "images": [
+        "https://res.cloudinary.com/dllmx2yf3/image/upload/v1789419477/ce88857e-3ab7-4ca3-8387-dcca559359ac_nbszze.jpg",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185735/f2f7701d-2e46-442e-a831-b96e2dead50f_b4wmc3.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185737/a6da6f39-3e85-4d55-8202-3ae9c8c3c535_hz6sxt.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185731/3975db60-44df-4f73-b38a-daba6ecd227c_g1dd1q.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185847/d65eeb68-94eb-480a-a5f6-a186c5fd2e0c_thueve.webp"
+    ],
+            "storageOptions": [
+                {
+                    "storage": "256GB",
+                    "originalPrice": 9499,
+                    "salePrice": 9499
+                },
+                {
+                    "storage": "512GB",
+                    "originalPrice": 10499,
+                    "salePrice": 10499
+                },
+                {
+                    "storage": "1TB",
+                    "originalPrice": 12499,
+                    "salePrice": 12499
+                },
+                {
+                    "storage": "2TB",
+                    "originalPrice": 15499,
+                    "salePrice": 15499
                 }
             ]
         }
+       
     ],
     "specGroups": [
         {
@@ -271,20 +277,21 @@
                         "id": "colors",
                         "label": "الألوان",
                         "title": "اختر من بين لونين مميزين. iPhone Duo معروض بلون أبيض نجمي",
-                        "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185735/f2f7701d-2e46-442e-a831-b96e2dead50f_b4wmc3.webp",
+                                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185730/89ce8eaa-cef5-4e84-9a0d-ae0cada86e24_hadz0a.webp",
                         "colors": [
+                             {
+                                "name": "Night Sky",
+                                "colorCode": "#1D1D1F",
+                                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185730/89ce8eaa-cef5-4e84-9a0d-ae0cada86e24_hadz0a.webp",
+                                "title": "اختر من بين لونين مميزين. iPhone Duo معروض بلون سماء ليلية"
+                            },
                             {
                                 "name": "Star White",
                                 "colorCode": "#F5F5F0",
                                 "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185735/f2f7701d-2e46-442e-a831-b96e2dead50f_b4wmc3.webp",
                                 "title": "اختر من بين لونين مميزين. iPhone Duo معروض بلون أبيض نجمي"
-                            },
-                            {
-                                "name": "Night Sky",
-                                "colorCode": "#1D1D1F",
-                                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789185730/89ce8eaa-cef5-4e84-9a0d-ae0cada86e24_hadz0a.webp",
-                                "title": "اختر من بين لونين مميزين. iPhone Duo معروض بلون سماء ليلية"
                             }
+                           
                         ]
                     },
                     {
@@ -521,7 +528,7 @@
         "conditions": []
     },
     "taxIncluded": true,
-    "category": "ابل ايفون 18",
+    "category": " ابل ايفون 18 دو",
     "subCategory": "هواتف ذكية",
     "brand": "Apple",
     "inStock": true

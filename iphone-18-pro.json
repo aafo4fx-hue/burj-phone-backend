@@ -1,24 +1,28 @@
 {
-"name": "أبل آيفون 18 برو  5G، 6.9 بوصة، 256 جيجابايت، برجاندي",
-  "brief": "فخامة من أول نظرة، وقوة تخليك تعمل أكثر مع آيفون 18 برو  الجديد.",
-  "originalPrice": 6299,
-  "salePrice": 6299,
-  "description": "استمتع بتجربة استثنائية مع آيفون 18 برو  المصمم ليجمع بين الفخامة والقوة في كل تفاصيله. شاشة 6.9 بوصة تمنحك تجربة مشاهدة غامرة، وشريحة A20 Pro توفر سرعة وأداءً استثنائيًا، بينما تمنحك الكاميرات الاحترافية صورًا وفيديوهات مذهلة في مختلف الظروف. سعة 256 جيجابايت توفر لك مساحة واسعة لتخزين صورك وملفاتك وتطبيقاتك، لتكون دائمًا جاهزًا لكل لحظة.",
-  "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/34ab662e-de1b-4359-9d99-43e2ba54678f_1_zd9s2s.webp",
-  "images": [
-    "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/34ab662e-de1b-4359-9d99-43e2ba54678f_1_zd9s2s.webp",
-    "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144346/68a6112d-56da-4755-9a83-006a073eed2d_1_rnhta5.webp",
-    "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144351/795ee711-d215-49ac-af72-1d2bb78b4507_1_iyr3w2.webp"  ],
+"name": "أبل آيفون 18 برو 5G، 6.9 بوصة، 2 تيرابايت، أسود",
+"brief": "فخامة من أول نظرة، وقوة تخليك تعمل أكثر مع آيفون 18 برو الجديد.",
+
+  "originalPrice": 11699,
+  "salePrice": 11699,
+  "image":          
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/9be64aca-f6ba-41a9-9cd9-ae7fc833ee72_1_ag7zws.webp",
+
+   "images": [
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/9be64aca-f6ba-41a9-9cd9-ae7fc833ee72_1_ag7zws.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145170/c1e8988b-72ef-436d-adbd-7acc73a1c1b6_e9abk1.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145167/db4ac83b-0e1c-4d17-99ec-676762c87997_lxrike.webp"
+      ],
   "variants": [
+    
     {
-      "name": "أبل آيفون 18 برو 5G، 6.9 بوصة، برجاندي",
-      "color": "Burgundy",
-      "colorCode": "#800020",
-      "defaultStorage": "256GB",
+      "name": "أبل آيفون 18 برو 5G، 6.9 بوصة، أسود",
+      "color": "Black",
+      "colorCode": "#000000",
+      "defaultStorage": "2TB",
       "images": [
-       "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/34ab662e-de1b-4359-9d99-43e2ba54678f_1_zd9s2s.webp",
-    "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144346/68a6112d-56da-4755-9a83-006a073eed2d_1_rnhta5.webp",
-    "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144351/795ee711-d215-49ac-af72-1d2bb78b4507_1_iyr3w2.webp"
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/9be64aca-f6ba-41a9-9cd9-ae7fc833ee72_1_ag7zws.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145170/c1e8988b-72ef-436d-adbd-7acc73a1c1b6_e9abk1.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145167/db4ac83b-0e1c-4d17-99ec-676762c87997_lxrike.webp"
       ],
       "storageOptions": [
         {
@@ -28,25 +32,63 @@
         },
         {
           "storage": "512GB",
-          "originalPrice": 6999,
-          "salePrice": 6999
+          "originalPrice": 6699,
+          "salePrice": 6699
         },
         {
           "storage": "1TB",
-          "originalPrice": 7999,
-          "salePrice": 7999
+          "originalPrice": 8699,
+          "salePrice": 8699
         }, {
           "storage": "2TB",
-          "originalPrice": 8500,
-          "salePrice": 8500
+          "originalPrice": 11699,
+          "salePrice": 11699
         }
       ]
     },
-    {
+
+     {
+      "name": "أبل آيفون 18 برو 5G، 6.9 بوصة، سيلفر",
+      "color": "Silver",
+      "colorCode": "#E8E8E8",
+      "defaultStorage": "2TB",
+      "images": [
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143812/11984507-b78d-47a8-b943-640b6cfe5bdf_1_sgzf22.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145173/5bb906c1-f216-4cca-866b-fa9975e5aabd_c65wfh.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145171/a211a08e-f6cf-4d4a-9e68-49ff2f98a3a0_usvl7h.webp",
+        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145166/6c97405a-1994-458e-99a8-334b485c6926_gdybt4.webp"
+      ],
+      "storageOptions": [
+       {
+          "storage": "256GB",
+          "originalPrice": 5999,
+          "salePrice": 5999
+        },
+        {
+          "storage": "512GB",
+          "originalPrice": 6699,
+          "salePrice": 6699
+        },
+        {
+          "storage": "1TB",
+          "originalPrice": 8699,
+          "salePrice": 8699
+        }, {
+          "storage": "2TB",
+          "originalPrice": 11699,
+          "salePrice": 11699
+        }
+      ]
+    },
+
+
+
+
+     {
       "name": "أبل آيفون 18 برو 5G، 6.9 بوصة، جلاسيير",
       "color": "Glacier",
       "colorCode": "#DCE6F0",
-      "defaultStorage": "256GB",
+      "defaultStorage": "2TB",
       "images": [
         "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/96bef8db-6a7f-4361-b75b-330d54685d37_1_fdqp0g.webp",
         "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145171/6d366922-e17f-44d7-94b8-e8372c599cd7_ryrgf9.webp",
@@ -61,30 +103,29 @@
         },
         {
           "storage": "512GB",
-          "originalPrice": 6999,
-          "salePrice": 6999
+          "originalPrice": 6699,
+          "salePrice": 6699
         },
         {
           "storage": "1TB",
-          "originalPrice": 7999,
-          "salePrice": 7999
+          "originalPrice": 8699,
+          "salePrice": 8699
         }, {
           "storage": "2TB",
-          "originalPrice": 8500,
-          "salePrice": 8500
+          "originalPrice": 11699,
+          "salePrice": 11699
         }
       ]
     },
     {
-      "name": "أبل آيفون 18 برو 5G، 6.9 بوصة، سيلفر",
-      "color": "Silver",
-      "colorCode": "#E8E8E8",
-      "defaultStorage": "256GB",
+      "name": "أبل آيفون 18 برو 5G، 6.9 بوصة، برجاندي",
+      "color": "Burgundy",
+      "colorCode": "#800020",
+      "defaultStorage": "2TB",
       "images": [
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143812/11984507-b78d-47a8-b943-640b6cfe5bdf_1_sgzf22.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145173/5bb906c1-f216-4cca-866b-fa9975e5aabd_c65wfh.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145171/a211a08e-f6cf-4d4a-9e68-49ff2f98a3a0_usvl7h.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145166/6c97405a-1994-458e-99a8-334b485c6926_gdybt4.webp"
+       "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/34ab662e-de1b-4359-9d99-43e2ba54678f_1_zd9s2s.webp",
+    "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144346/68a6112d-56da-4755-9a83-006a073eed2d_1_rnhta5.webp",
+    "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144351/795ee711-d215-49ac-af72-1d2bb78b4507_1_iyr3w2.webp"
       ],
       "storageOptions": [
         {
@@ -94,49 +135,17 @@
         },
         {
           "storage": "512GB",
-          "originalPrice": 6999,
-          "salePrice": 6999
+          "originalPrice": 6699,
+          "salePrice": 6699
         },
         {
           "storage": "1TB",
-          "originalPrice": 7999,
-          "salePrice": 7999
+          "originalPrice": 8699,
+          "salePrice": 8699
         }, {
           "storage": "2TB",
-          "originalPrice": 8500,
-          "salePrice": 8500
-        }
-      ]
-    },
-    {
-      "name": "أبل آيفون 18 برو 5G، 6.9 بوصة، أسود",
-      "color": "Black",
-      "colorCode": "#000000",
-      "defaultStorage": "256GB",
-      "images": [
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789143815/9be64aca-f6ba-41a9-9cd9-ae7fc833ee72_1_ag7zws.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145170/c1e8988b-72ef-436d-adbd-7acc73a1c1b6_e9abk1.webp",
-        "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145167/db4ac83b-0e1c-4d17-99ec-676762c87997_lxrike.webp"
-      ],
-      "storageOptions": [
-        {
-          "storage": "256GB",
-          "originalPrice": 5999,
-          "salePrice": 5999
-        },
-        {
-          "storage": "512GB",
-          "originalPrice": 6999,
-          "salePrice": 6999
-        },
-        {
-          "storage": "1TB",
-          "originalPrice": 7999,
-          "salePrice": 7999
-        }, {
-          "storage": "2TB",
-          "originalPrice": 8500,
-          "salePrice": 8500
+          "originalPrice": 11699,
+          "salePrice": 11699
         }
       ]
     }
@@ -266,32 +275,35 @@
             "id": "colors",
             "label": "الألوان",
             "title": "اختر من بين أربعة ألوان مميزة. iPhone 18 Pro معروض بلون Burgundy",
-            "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144351/795ee711-d215-49ac-af72-1d2bb78b4507_1_iyr3w2.webp",
+                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145167/db4ac83b-0e1c-4d17-99ec-676762c87997_lxrike.webp",
             "colors": [
-              {
-                "name": "Burgundy",
-                "colorCode": "#800020",
-                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144351/795ee711-d215-49ac-af72-1d2bb78b4507_1_iyr3w2.webp",
-                "title": "اختر من بين أربعة ألوان مميزة. iPhone 18 Pro معروض بلون Burgundy"
+               {
+                "name": "Black",
+                "colorCode": "#000000",
+                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145167/db4ac83b-0e1c-4d17-99ec-676762c87997_lxrike.webp",
+                "title": "اختر من بين أربعة ألوان مميزة. iPhone 18 Pro معروض بلون Black"
               },
-              {
+               {
                 "name": "Silver",
                 "colorCode": "#E8E8E8",
                 "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145166/6c97405a-1994-458e-99a8-334b485c6926_gdybt4.webp",
                 "title": "اختر من بين أربعة ألوان مميزة. iPhone 18 Pro معروض بلون Silver"
               },
-              {
+               {
                 "name": "Glacier",
                 "colorCode": "#DCE6F0",
                 "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145167/6b5e6097-9346-4d50-a6d9-6dcfc3125234_uxcznc.webp",
                 "title": "اختر من بين أربعة ألوان مميزة. iPhone 18 Pro معروض بلون Glacier"
               },
               {
-                "name": "Black",
-                "colorCode": "#000000",
-                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789145167/db4ac83b-0e1c-4d17-99ec-676762c87997_lxrike.webp",
-                "title": "اختر من بين أربعة ألوان مميزة. iPhone 18 Pro معروض بلون Black"
+                "name": "Burgundy",
+                "colorCode": "#800020",
+                "image": "https://res.cloudinary.com/dyqkhcuxe/image/upload/v1789144351/795ee711-d215-49ac-af72-1d2bb78b4507_1_iyr3w2.webp",
+                "title": "اختر من بين أربعة ألوان مميزة. iPhone 18 Pro معروض بلون Burgundy"
               }
+             
+             
+             
             ]
           },
           {
@@ -574,7 +586,7 @@
     "conditions": []
   },
   "taxIncluded": true,
-  "category": "ابل ايفون 18",
+  "category": "ابل ايفون 18 برو",
   "subCategory": "هواتف ذكية",
   "brand": "Apple",
   "inStock": true

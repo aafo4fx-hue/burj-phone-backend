@@ -686,7 +686,12 @@ router.put("/orders/:id/status", authMiddleware, async (req, res) => {
 // GET /api/admin/reviews (public - approved only)
 router.get("/reviews", async (req, res) => {
   try {
-    const reviews = await Review.find({ approved: true }).sort({ createdAt: -1 });
+    // Limit to the 50 most recent approved reviews — the homepage slider
+    // shows at most 3 at a time; returning all reviews is unnecessary.
+    const reviews = await Review.find({ approved: true })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .select("name comment rating gender createdAt");
     res.json(reviews);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
