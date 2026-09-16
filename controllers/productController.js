@@ -28,7 +28,18 @@ exports.getProducts = async (req, res) => {
   // unlike the previous unanchored pattern which forced a collection scan.
   if (category) {
     const cat = category.trim();
-    query.category = { $regex: new RegExp(`^${cat}$`, "i") };
+    // Normalize Arabic hamza variants so that e.g. "أبل" matches "ابل" in the DB.
+    // The regex alternation covers the four common hamza forms: أ إ آ ا
+    const normalizedCat = cat
+      .replace(/[أإآ]/g, "ا")
+      .replace(/[ىي]/g, "ي")
+      .replace(/ة/g, "ه")
+      .replace(/ؤ/g, "و")
+      .replace(/ئ/g, "ي");
+    // Build a pattern where each hamza form matches any of the four variants.
+    // This makes the query robust regardless of how the category was stored.
+    const pattern = normalizedCat.replace(/ا/g, "[أإآا]");
+    query.category = { $regex: new RegExp(`^${pattern}$`, "i") };
   }
 
   if (!q) {
