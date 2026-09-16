@@ -8,14 +8,29 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// Single shared memory storage instance — no need to recreate it per call.
 const memoryStorage = multer.memoryStorage();
 
+// Pre-built multer instances (created once at startup, not on every request).
+const imageUpload = multer({
+  storage: memoryStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+const fileUpload = multer({
+  storage: memoryStorage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+// makeImageUpload / makeFileUpload kept for backwards-compatibility with
+// adminRoutes.js call sites, but now return the same shared instance instead
+// of creating a new one each time.
 function makeImageUpload() {
-  return multer({ storage: memoryStorage, limits: { fileSize: 5 * 1024 * 1024 } });
+  return imageUpload;
 }
 
 function makeFileUpload() {
-  return multer({ storage: memoryStorage, limits: { fileSize: 20 * 1024 * 1024 } });
+  return fileUpload;
 }
 
 function uploadToCloudinary(buffer, folder, options = {}) {
@@ -42,18 +57,4 @@ async function deleteFromCloudinary(url, resource_type = "image") {
   }
 }
 
-function signCloudinaryUrl(url) {
-  if (!url || !url.includes("cloudinary.com")) return url;
-  try {
-    const parts = url.split("/");
-    const uploadIndex = parts.indexOf("upload");
-    let pathParts = parts.slice(uploadIndex + 1);
-    if (/^v\d+$/.test(pathParts[0])) pathParts = pathParts.slice(1);
-    const publicId = pathParts.join("/").replace(/\.[^/.]+$/, "");
-    return cloudinary.url(publicId, { sign_url: true, type: "authenticated" });
-  } catch {
-    return url;
-  }
-}
-
-module.exports = { cloudinary, makeImageUpload, makeFileUpload, uploadToCloudinary, deleteFromCloudinary, signCloudinaryUrl };
+module.exports = { makeImageUpload, makeFileUpload, uploadToCloudinary, deleteFromCloudinary };

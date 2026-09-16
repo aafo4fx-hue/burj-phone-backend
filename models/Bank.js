@@ -6,4 +6,7 @@ const bankSchema = new mongoose.Schema({
   logo: { type: String, default: "" },
 }, { timestamps: true });
 
+// Supports admin listing sorted by creation date.
+bankSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model("Bank", bankSchema);

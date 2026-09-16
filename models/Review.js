@@ -11,4 +11,7 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Public endpoint filters on approved=true and sorts by createdAt desc.
+reviewSchema.index({ approved: 1, createdAt: -1 });
+
 module.exports = mongoose.model("Review", reviewSchema);

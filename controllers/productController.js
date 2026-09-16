@@ -8,6 +8,20 @@ const LIST_PROJECTION =
   "freeDelivery deliveryTime warrantyYears inStock status purchasable " +
   "category subCategory brand discountPercent";
 
+// Fields needed for the product detail page.
+const DETAIL_PROJECTION =
+  "name brief originalPrice salePrice image images variants " +
+  "color storage network screenSize overview overviewImage " +
+  "specs specGroups features detailedSpecs sections " +
+  "freeDelivery deliveryTime warrantyYears inStock status purchasable " +
+  "installment taxIncluded category subCategory brand " +
+  "description discountPercent";
+
+// ---------------------------------------------------------------------------
+// Arabic normalization helper
+// Hoisted to module scope so the replacement chains are not re-evaluated on
+// every call — the function body is a constant closure over nothing.
+// ---------------------------------------------------------------------------
 function normalizeArabic(str) {
   return str
     .replace(/[أإآا]/g, "ا")
@@ -17,106 +31,95 @@ function normalizeArabic(str) {
     .replace(/ئ/g, "ي");
 }
 
+// ---------------------------------------------------------------------------
+// Category query builder
+// Builds a MongoDB-compatible regex pattern that matches Arabic hamza variants.
+// Extracted so it is not duplicated between the two callers.
+// ---------------------------------------------------------------------------
+function buildCategoryQuery(category) {
+  const cat = category.trim();
+  const normalizedCat = cat
+    .replace(/[أإآ]/g, "ا")
+    .replace(/[ىي]/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي");
+  const pattern = normalizedCat.replace(/ا/g, "[أإآا]");
+  return { $regex: new RegExp(`^${pattern}$`, "i") };
+}
+
+// ---------------------------------------------------------------------------
+// Arabic substring search fallback (used when $text index returns nothing or
+// is unavailable). Loads up to `limit` docs with .lean() then filters in
+// Node.js with an early exit at `maxResults` to avoid wasted iteration.
+// ---------------------------------------------------------------------------
+async function arabicSubstringSearch(query, q, { limit = 500, maxResults = 30 } = {}) {
+  const normalized = normalizeArabic(q);
+  const all = await Product.find(query)
+    .select(LIST_PROJECTION)
+    .sort({ createdAt: 1 })
+    .limit(limit)
+    .lean();
+  const filtered = [];
+  for (let i = 0; i < all.length; i++) {
+    if (normalizeArabic(all[i].name).includes(normalized)) {
+      filtered.push(all[i]);
+      if (filtered.length === maxResults) break;
+    }
+  }
+  return filtered;
+}
+
 exports.getProducts = async (req, res) => {
   const { q, brand, category } = req.query;
   const limitParam = parseInt(req.query.limit) || 0;
 
   const query = {};
   if (brand) query.brand = { $regex: new RegExp(`^${brand}$`, "i") };
-  // Use exact equality first (index-friendly), then fall back to anchored regex.
-  // Anchored ^...$ regex can leverage the {category:1} index prefix,
-  // unlike the previous unanchored pattern which forced a collection scan.
-  if (category) {
-    const cat = category.trim();
-    // Normalize Arabic hamza variants so that e.g. "أبل" matches "ابل" in the DB.
-    // The regex alternation covers the four common hamza forms: أ إ آ ا
-    const normalizedCat = cat
-      .replace(/[أإآ]/g, "ا")
-      .replace(/[ىي]/g, "ي")
-      .replace(/ة/g, "ه")
-      .replace(/ؤ/g, "و")
-      .replace(/ئ/g, "ي");
-    // Build a pattern where each hamza form matches any of the four variants.
-    // This makes the query robust regardless of how the category was stored.
-    const pattern = normalizedCat.replace(/ا/g, "[أإآا]");
-    query.category = { $regex: new RegExp(`^${pattern}$`, "i") };
-  }
+  if (category) query.category = buildCategoryQuery(category);
 
   if (!q) {
-    // Apply a safety ceiling of 500 when no explicit limit is requested.
-    // Category and brand queries rarely need more than 100-200 results;
-    // this cap prevents unbounded MongoDB reads while covering all real cases.
+    // .lean() eliminates Mongoose document hydration overhead — returns plain
+    // JS objects directly. This is the hot list-page path.
     const effectiveLimit = limitParam > 0 ? limitParam : 500;
-    const dbQuery = Product.find(query)
+    const products = await Product.find(query)
       .select(LIST_PROJECTION)
       .sort({ createdAt: 1 })
-      .limit(effectiveLimit);
-    return res.json(await dbQuery);
+      .limit(effectiveLimit)
+      .lean();
+    return res.json(products);
   }
 
   // Search path — use MongoDB $text index to move filtering from Node.js CPU
-  // to the database engine. The text index covers: name, category, subCategory, brand.
-  // Limit to 30 results — the search dropdown shows at most ~10 items.
-  // Active CPU reduction: eliminates normalizeArabic() + Array.filter() + String.includes()
-  // on every product document. Filtering now happens inside MongoDB (I/O, not Node.js CPU).
-  //
-  // Note: $text uses word-level tokenization, not substring matching.
-  // For the Navbar search bar this is the correct behaviour (users type product names).
-  // If a future requirement needs substring search, MongoDB Atlas Search or a
-  // regex-based approach with a limit should be used instead.
+  // to the database engine.
   try {
     const textQuery = { ...query, $text: { $search: q } };
     const results = await Product.find(textQuery)
       .select(LIST_PROJECTION)
-      .limit(30);
+      .limit(30)
+      .lean();
 
-    // If $text returns nothing (e.g. single-char input not indexed), fall back
-    // to the normalizeArabic substring approach with an explicit limit to prevent
-    // unbounded Node.js processing.
-    if (results.length === 0) {
-      const normalized = normalizeArabic(q);
-      const all = await Product.find(query).select(LIST_PROJECTION).sort({ createdAt: 1 }).limit(500);
-      const filtered = all.filter((p) => normalizeArabic(p.name).includes(normalized));
-      return res.json(filtered.slice(0, 30));
-    }
+    // $text matched something — return it directly (no Node.js CPU filtering).
+    if (results.length > 0) return res.json(results);
 
-    return res.json(results);
+    // $text returned nothing (single char, short token not in index, etc.).
+    // Fall back to Arabic-normalised substring search with early-exit cap.
+    return res.json(await arabicSubstringSearch(query, q));
   } catch {
-    // $text search can throw if the text index doesn't exist yet — safe fallback
-    const normalized = normalizeArabic(q);
-    const all = await Product.find(query).select(LIST_PROJECTION).sort({ createdAt: 1 }).limit(500);
-    const filtered = all.filter((p) => normalizeArabic(p.name).includes(normalized));
-    return res.json(filtered.slice(0, 30));
+    // $text search threw (index missing on this collection) — use fallback.
+    return res.json(await arabicSubstringSearch(query, q));
   }
 };
 
-// Fields needed for the product detail page.
-// Excludes admin-only or internal fields not rendered by the frontend.
-// hideDetails is excluded intentionally — it controls visibility logic in the
-// admin panel but is never read by the detail page components.
-// createdAt/updatedAt are excluded: not displayed to end users.
-const DETAIL_PROJECTION =
-  "name brief originalPrice salePrice image images variants " +
-  "color storage network screenSize overview overviewImage " +
-  "specs specGroups features detailedSpecs sections " +
-  "freeDelivery deliveryTime warrantyYears inStock status purchasable " +
-  "installment taxIncluded category subCategory brand " +
-  "description discountPercent";
-
 exports.getProduct = async (req, res) => {
   try {
-    // .lean() returns a plain JS object instead of a Mongoose Document,
-    // eliminating Mongoose's hydration + toJSON/toObject overhead.
-    // Virtuals (discountPercent, price) are NOT available on lean() results,
-    // so discountPercent is included in the projection as a real-field fallback.
-    // The frontend derives price from originalPrice/salePrice directly.
+    // .lean() returns a plain JS object — eliminates Mongoose hydration + toJSON overhead.
     const product = await Product.findById(req.params.id)
       .select(DETAIL_PROJECTION)
       .lean();
     if (!product) return res.status(404).json({ message: "Product not found" });
     res.json(product);
   } catch (err) {
-    // CastError is thrown by Mongoose when id is not a valid ObjectId.
     if (err.name === "CastError") {
       return res.status(404).json({ message: "Product not found" });
     }
@@ -126,18 +129,35 @@ exports.getProduct = async (req, res) => {
 };
 
 exports.createProduct = async (req, res) => {
-  const product = await Product.create(req.body);
-  res.status(201).json(product);
+  try {
+    const product = await Product.create(req.body);
+    res.status(201).json(product);
+  } catch (err) {
+    console.error("[createProduct] error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 exports.updateProduct = async (req, res) => {
-  const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
-  if (!product) return res.status(404).json({ message: "Product not found" });
-  res.json(product);
+  try {
+    const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    res.json(product);
+  } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ message: "Product not found" });
+    console.error("[updateProduct] error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 exports.deleteProduct = async (req, res) => {
-  const product = await Product.findByIdAndDelete(req.params.id);
-  if (!product) return res.status(404).json({ message: "Product not found" });
-  res.json({ message: "Product deleted" });
+  try {
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    res.json({ message: "Product deleted" });
+  } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ message: "Product not found" });
+    console.error("[deleteProduct] error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
 };
