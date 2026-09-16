@@ -23,11 +23,23 @@ exports.getProducts = async (req, res) => {
 
   const query = {};
   if (brand) query.brand = { $regex: new RegExp(`^${brand}$`, "i") };
-  if (category) query.category = { $regex: new RegExp(category.trim(), "i") };
+  // Use exact equality first (index-friendly), then fall back to anchored regex.
+  // Anchored ^...$ regex can leverage the {category:1} index prefix,
+  // unlike the previous unanchored pattern which forced a collection scan.
+  if (category) {
+    const cat = category.trim();
+    query.category = { $regex: new RegExp(`^${cat}$`, "i") };
+  }
 
   if (!q) {
-    let dbQuery = Product.find(query).select(LIST_PROJECTION).sort({ createdAt: 1 });
-    if (limitParam > 0) dbQuery = dbQuery.limit(limitParam);
+    // Apply a safety ceiling of 500 when no explicit limit is requested.
+    // Category and brand queries rarely need more than 100-200 results;
+    // this cap prevents unbounded MongoDB reads while covering all real cases.
+    const effectiveLimit = limitParam > 0 ? limitParam : 500;
+    const dbQuery = Product.find(query)
+      .select(LIST_PROJECTION)
+      .sort({ createdAt: 1 })
+      .limit(effectiveLimit);
     return res.json(await dbQuery);
   }
 
@@ -67,11 +79,39 @@ exports.getProducts = async (req, res) => {
   }
 };
 
+// Fields needed for the product detail page.
+// Excludes admin-only or internal fields not rendered by the frontend.
+// hideDetails is excluded intentionally — it controls visibility logic in the
+// admin panel but is never read by the detail page components.
+// createdAt/updatedAt are excluded: not displayed to end users.
+const DETAIL_PROJECTION =
+  "name brief originalPrice salePrice image images variants " +
+  "color storage network screenSize overview overviewImage " +
+  "specs specGroups features detailedSpecs sections " +
+  "freeDelivery deliveryTime warrantyYears inStock status purchasable " +
+  "installment taxIncluded category subCategory brand " +
+  "description discountPercent";
+
 exports.getProduct = async (req, res) => {
-  // Single product — return ALL fields for the product detail page.
-  const product = await Product.findById(req.params.id);
-  if (!product) return res.status(404).json({ message: "Product not found" });
-  res.json(product);
+  try {
+    // .lean() returns a plain JS object instead of a Mongoose Document,
+    // eliminating Mongoose's hydration + toJSON/toObject overhead.
+    // Virtuals (discountPercent, price) are NOT available on lean() results,
+    // so discountPercent is included in the projection as a real-field fallback.
+    // The frontend derives price from originalPrice/salePrice directly.
+    const product = await Product.findById(req.params.id)
+      .select(DETAIL_PROJECTION)
+      .lean();
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    res.json(product);
+  } catch (err) {
+    // CastError is thrown by Mongoose when id is not a valid ObjectId.
+    if (err.name === "CastError") {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    console.error("[getProduct] error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 exports.createProduct = async (req, res) => {

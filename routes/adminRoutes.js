@@ -27,14 +27,11 @@ const router = express.Router();
 
 function authMiddleware(req, res, next) {
   const token = req.cookies?.admin_token;
-  console.log("[auth] cookie:", req.headers.cookie);
-  console.log("[auth] token:", token ? "present" : "missing");
   if (!token) return res.status(401).json({ error: "غير مصرح" });
   try {
     req.admin = jwt.verify(token, process.env.JWT_SECRET);
     next();
   } catch (err) {
-    console.error("[auth] jwt error:", err.message);
     res.status(401).json({ error: "غير مصرح" });
   }
 }
