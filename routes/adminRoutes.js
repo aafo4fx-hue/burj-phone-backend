@@ -65,6 +65,15 @@ function invalidateCache(...keys) {
   for (const k of keys) _cache.delete(k);
 }
 
+// Invalidates all category-banner cache entries that contain `category`.
+// Called on every category-banner mutation so stale bulk-banner responses
+// are not served.
+function invalidateCategoryBannerCache(category) {
+  for (const k of _cache.keys()) {
+    if (k.includes(category)) _cache.delete(k);
+  }
+}
+
 // ---------------------------------------------------------------------------
 const router = express.Router();
 
@@ -80,10 +89,33 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "البريد والكلمة مطلوبان" });
 
     const admin = await Admin.findOne({ email });
+    // Return the same generic error whether the email exists or not —
+    // avoids user-enumeration.
     if (!admin) return res.status(401).json({ error: "بيانات غير صحيحة" });
 
+    // Check lockout before doing the expensive bcrypt compare.
+    if (admin.isLocked()) {
+      return res.status(423).json({ error: "الحساب مقفل مؤقتاً، حاول لاحقاً" });
+    }
+
     const match = await admin.comparePassword(password);
-    if (!match) return res.status(401).json({ error: "بيانات غير صحيحة" });
+    if (!match) {
+      // Increment failed attempts; lock after 10 consecutive failures for 15 min.
+      admin.loginAttempts = (admin.loginAttempts || 0) + 1;
+      if (admin.loginAttempts >= 10) {
+        admin.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        admin.loginAttempts = 0;
+      }
+      await admin.save();
+      return res.status(401).json({ error: "بيانات غير صحيحة" });
+    }
+
+    // Successful login — reset counters.
+    if (admin.loginAttempts !== 0 || admin.lockUntil) {
+      admin.loginAttempts = 0;
+      admin.lockUntil = undefined;
+      await admin.save();
+    }
 
     const token = jwt.sign(
       { id: admin._id, email: admin.email },
@@ -831,7 +863,7 @@ router.patch("/sub-categories/max", authMiddleware, async (req, res) => {
 // ============================================================
 
 // GET /api/admin/orders
-router.get("/orders", async (req, res) => {
+router.get("/orders", authMiddleware, async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
@@ -852,7 +884,7 @@ router.get("/orders", async (req, res) => {
 });
 
 // GET /api/admin/orders/:id
-router.get("/orders/:id", async (req, res) => {
+router.get("/orders/:id", authMiddleware, async (req, res) => {
   try {
     const order = await Checkout.findById(req.params.id).lean();
     if (!order) return res.status(404).json({ ok: false, error: "not found" });
@@ -1519,7 +1551,7 @@ router.post("/category-banners/:category/upload/:index", authMiddleware, upload.
     doc.banners.set(index, { url: result.secure_url, active: doc.banners[index].active });
     await doc.save();
     // Invalidate all bulk-banner cache entries for this category.
-    for (const k of _cache.keys()) { if (k.includes(category)) _cache.delete(k); }
+    invalidateCategoryBannerCache(category);
     res.json({ url: result.secure_url });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1538,7 +1570,7 @@ router.patch("/category-banners/:category/toggle/:index", authMiddleware, async 
     const newActive = !doc.banners[index].active;
     doc.banners.set(index, { url: doc.banners[index].url, active: newActive });
     await doc.save();
-    for (const k of _cache.keys()) { if (k.includes(category)) _cache.delete(k); }
+    invalidateCategoryBannerCache(category);
     res.json({ active: newActive });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1554,7 +1586,7 @@ router.post("/category-banners/:category/add", authMiddleware, async (req, res) 
     if (doc.banners.length >= 10) return res.status(400).json({ error: "الحد الأقصى 10 بانرات" });
     doc.banners.push({ url: "", active: true });
     await doc.save();
-    for (const k of _cache.keys()) { if (k.includes(category)) _cache.delete(k); }
+    invalidateCategoryBannerCache(category);
     res.json({ index: doc.banners.length - 1 });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1573,7 +1605,7 @@ router.delete("/category-banners/:category/:index/image", authMiddleware, async 
     await deleteFromCloudinary(doc.banners[index]?.url);
     doc.banners.set(index, { url: "", active: doc.banners[index].active });
     await doc.save();
-    for (const k of _cache.keys()) { if (k.includes(category)) _cache.delete(k); }
+    invalidateCategoryBannerCache(category);
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1592,7 +1624,7 @@ router.delete("/category-banners/:category/:index", authMiddleware, async (req, 
     await deleteFromCloudinary(doc.banners[index]?.url);
     doc.banners.splice(index, 1);
     await doc.save();
-    for (const k of _cache.keys()) { if (k.includes(category)) _cache.delete(k); }
+    invalidateCategoryBannerCache(category);
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });

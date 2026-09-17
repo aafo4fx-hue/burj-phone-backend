@@ -20,9 +20,51 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+
+// Keep body limits tight — the largest legitimate payload is a product with
+// a few image URLs. 1 MB is generous; 2 MB was never needed.
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
+
+// ---------------------------------------------------------------------------
+// Lightweight in-process rate limiter for the login endpoint.
+// Prevents brute-force without adding a dependency.
+// Stores at most MAX_ENTRIES IPs; oldest entries are purged each window.
+// ---------------------------------------------------------------------------
+const LOGIN_WINDOW_MS  = 15 * 60 * 1000; // 15 minutes
+const LOGIN_MAX        = 10;              // max attempts per window per IP
+const MAX_ENTRIES      = 5_000;          // cap map size to avoid memory leak
+const loginAttempts    = new Map();       // ip → { count, resetAt }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of loginAttempts) {
+    if (now >= entry.resetAt) loginAttempts.delete(ip);
+  }
+}, LOGIN_WINDOW_MS).unref(); // .unref() so the timer doesn't keep Node alive
+
+app.use("/api/admin/login", (req, res, next) => {
+  if (req.method !== "POST") return next();
+  const ip  = req.ip || req.socket?.remoteAddress || "unknown";
+  const now = Date.now();
+  let entry = loginAttempts.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    entry = { count: 0, resetAt: now + LOGIN_WINDOW_MS };
+    // Evict oldest entry when the map is full.
+    if (loginAttempts.size >= MAX_ENTRIES) {
+      loginAttempts.delete(loginAttempts.keys().next().value);
+    }
+    loginAttempts.set(ip, entry);
+  }
+  entry.count++;
+  if (entry.count > LOGIN_MAX) {
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    res.set("Retry-After", retryAfter);
+    return res.status(429).json({ error: "محاولات كثيرة، حاول بعد قليل" });
+  }
+  next();
+});
 
 app.get("/", (req, res) => {
   res.json({ message: "API is running..." });

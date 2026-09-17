@@ -143,11 +143,11 @@ const productSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    // Virtuals are disabled by default to avoid per-document computation
-    // overhead on every hydrated query result. They are still accessible
-    // via .toObject({ virtuals: true }) when explicitly needed.
-    toJSON:   { virtuals: false },
-    toObject: { virtuals: false },
+    // Enable virtuals in toJSON so that res.json(hydratedDoc) includes
+    // discountPercent and price automatically.  lean() results still need
+    // addDiscount() from productController since lean() bypasses toJSON.
+    toJSON:   { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 

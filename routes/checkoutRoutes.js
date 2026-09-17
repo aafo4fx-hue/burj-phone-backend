@@ -147,16 +147,19 @@ const LIST_PROJECTION = {
   "items.name": 1,
 };
 
-// Pre-compiled search filter builder — avoids re-allocating RegExp objects
-// inside the request handler on each call.
+// ---------------------------------------------------------------------------
+// Search filter builder
+// Escapes user input before embedding it in a RegExp so special characters
+// don't break the pattern.  The RegExp object is created here (not hoisted)
+// because it depends on the per-request `search` value.
+// ---------------------------------------------------------------------------
 function buildSearchFilter(search) {
-  if (!search || typeof search !== "string") return {};
-  // Escape user input before embedding in a RegExp.
-  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!search || typeof search !== "string" || search.trim() === "") return {};
+  const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(escaped, "i");
   return {
     $or: [
-      { customer:  re },
+      { customer: re },
       { whatsapp:  re },
       { orderId:   re },
     ],

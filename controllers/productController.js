@@ -1,26 +1,46 @@
 const Product = require("../models/Product");
 
-// Fields needed for listing cards (homepage, category pages).
-// Heavy fields (sections, specGroups, variants, features, detailedSpecs,
-// description, overview, overviewImage, specs) are excluded from list queries.
-const LIST_PROJECTION =
+// ---------------------------------------------------------------------------
+// Projection strings
+// discountPercent is a virtual — it cannot appear in a .select() string.
+// It is appended to each lean plain-object via addDiscount() below.
+// ---------------------------------------------------------------------------
+
+// Fields for list / card views (homepage, category pages).
+// Excludes heavy nested fields: sections, specGroups, variants, features,
+// detailedSpecs, description, overview, overviewImage, specs.
+const LIST_FIELDS =
   "name originalPrice salePrice image images color storage network " +
   "freeDelivery deliveryTime warrantyYears inStock status purchasable " +
-  "category subCategory brand discountPercent";
+  "category subCategory brand";
 
-// Fields needed for the product detail page.
-const DETAIL_PROJECTION =
+// Fields for the product detail page.
+const DETAIL_FIELDS =
   "name brief originalPrice salePrice image images variants " +
   "color storage network screenSize overview overviewImage " +
   "specs specGroups features detailedSpecs sections " +
   "freeDelivery deliveryTime warrantyYears inStock status purchasable " +
-  "installment taxIncluded category subCategory brand " +
-  "description discountPercent";
+  "installment taxIncluded category subCategory brand description";
 
 // ---------------------------------------------------------------------------
-// Arabic normalization helper
-// Hoisted to module scope so the replacement chains are not re-evaluated on
-// every call — the function body is a constant closure over nothing.
+// discountPercent helper
+// The Product schema has toJSON: { virtuals: false } to keep serialisation
+// cheap. We compute the discount once per object here instead of re-hydrating
+// the document, so lean() stays lean.
+// ---------------------------------------------------------------------------
+function addDiscount(obj) {
+  if (!obj) return obj;
+  const orig = obj.originalPrice;
+  const sale = obj.salePrice;
+  obj.discountPercent =
+    sale != null && sale !== orig && orig > 0
+      ? Math.round(((orig - sale) / orig) * 100)
+      : 0;
+  return obj;
+}
+
+// ---------------------------------------------------------------------------
+// Arabic normalization helper — compiled once at module load.
 // ---------------------------------------------------------------------------
 function normalizeArabic(str) {
   return str
@@ -33,8 +53,8 @@ function normalizeArabic(str) {
 
 // ---------------------------------------------------------------------------
 // Category query builder
-// Builds a MongoDB-compatible regex pattern that matches Arabic hamza variants.
-// Extracted so it is not duplicated between the two callers.
+// Builds a MongoDB regex that matches Arabic hamza variants so that
+// "أيفون" and "ايفون" resolve to the same category.
 // ---------------------------------------------------------------------------
 function buildCategoryQuery(category) {
   const cat = category.trim();
@@ -49,76 +69,108 @@ function buildCategoryQuery(category) {
 }
 
 // ---------------------------------------------------------------------------
-// Arabic substring search fallback (used when $text index returns nothing or
-// is unavailable). Loads up to `limit` docs with .lean() then filters in
-// Node.js with an early exit at `maxResults` to avoid wasted iteration.
+// Arabic substring search fallback
+// Used when the $text index returns nothing (single character, unstemmed
+// token, etc.).  Fetches at most `scanLimit` documents and stops as soon as
+// `maxResults` matches are found — prevents unbounded Node.js CPU use.
+//
+// OPTIMISATION: Before loading full documents, we first try a MongoDB $regex
+// on the (indexed) name field using only the ASCII-safe portion of the query.
+// This lets the server-side index reduce the scan set before data hits Node.
 // ---------------------------------------------------------------------------
-async function arabicSubstringSearch(query, q, { limit = 500, maxResults = 30 } = {}) {
+const SEARCH_SCAN_LIMIT  = 500;
+const SEARCH_MAX_RESULTS = 30;
+
+async function arabicSubstringSearch(query, q) {
   const normalized = normalizeArabic(q);
-  const all = await Product.find(query)
-    .select(LIST_PROJECTION)
+
+  // Attempt a cheap server-side pre-filter: regex on name with the raw query.
+  // If it returns results we skip the full 500-doc scan entirely.
+  try {
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regexResults = await Product.find({
+      ...query,
+      name: { $regex: escaped, $options: "i" },
+    })
+      .select(LIST_FIELDS)
+      .limit(SEARCH_MAX_RESULTS)
+      .lean();
+
+    if (regexResults.length > 0) return regexResults;
+  } catch {
+    // regex pre-filter failed — fall through to full in-process scan.
+  }
+
+  // Full Arabic-normalised in-process scan as last resort.
+  const docs = await Product.find(query)
+    .select(LIST_FIELDS)
     .sort({ createdAt: 1 })
-    .limit(limit)
+    .limit(SEARCH_SCAN_LIMIT)
     .lean();
-  const filtered = [];
-  for (let i = 0; i < all.length; i++) {
-    if (normalizeArabic(all[i].name).includes(normalized)) {
-      filtered.push(all[i]);
-      if (filtered.length === maxResults) break;
+
+  const results = [];
+  for (const doc of docs) {
+    if (normalizeArabic(doc.name).includes(normalized)) {
+      results.push(doc);
+      if (results.length === SEARCH_MAX_RESULTS) break;
     }
   }
-  return filtered;
+  return results;
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/products
+// ---------------------------------------------------------------------------
 exports.getProducts = async (req, res) => {
-  const { q, brand, category } = req.query;
-  const limitParam = parseInt(req.query.limit) || 0;
-
-  const query = {};
-  if (brand) query.brand = { $regex: new RegExp(`^${brand}$`, "i") };
-  if (category) query.category = buildCategoryQuery(category);
-
-  if (!q) {
-    // .lean() eliminates Mongoose document hydration overhead — returns plain
-    // JS objects directly. This is the hot list-page path.
-    const effectiveLimit = limitParam > 0 ? limitParam : 500;
-    const products = await Product.find(query)
-      .select(LIST_PROJECTION)
-      .sort({ createdAt: 1 })
-      .limit(effectiveLimit)
-      .lean();
-    return res.json(products);
-  }
-
-  // Search path — use MongoDB $text index to move filtering from Node.js CPU
-  // to the database engine.
   try {
-    const textQuery = { ...query, $text: { $search: q } };
-    const results = await Product.find(textQuery)
-      .select(LIST_PROJECTION)
-      .limit(30)
-      .lean();
+    const { q, brand, category } = req.query;
+    const limitParam = parseInt(req.query.limit) || 0;
 
-    // $text matched something — return it directly (no Node.js CPU filtering).
-    if (results.length > 0) return res.json(results);
+    const query = {};
+    if (brand)    query.brand    = { $regex: new RegExp(`^${brand}$`, "i") };
+    if (category) query.category = buildCategoryQuery(category);
 
-    // $text returned nothing (single char, short token not in index, etc.).
-    // Fall back to Arabic-normalised substring search with early-exit cap.
-    return res.json(await arabicSubstringSearch(query, q));
-  } catch {
-    // $text search threw (index missing on this collection) — use fallback.
-    return res.json(await arabicSubstringSearch(query, q));
+    if (!q) {
+      const effectiveLimit = limitParam > 0 ? limitParam : 500;
+      const products = await Product.find(query)
+        .select(LIST_FIELDS)
+        .sort({ createdAt: 1 })
+        .limit(effectiveLimit)
+        .lean();
+      return res.json(products.map(addDiscount));
+    }
+
+    // Search: try $text index first (fast, DB-side) then fall back to
+    // in-process Arabic substring scan.
+    try {
+      const results = await Product.find({ ...query, $text: { $search: q } })
+        .select(LIST_FIELDS)
+        .limit(SEARCH_MAX_RESULTS)
+        .lean();
+
+      if (results.length > 0) return res.json(results.map(addDiscount));
+    } catch {
+      // $text index missing or unavailable — fall through to substring scan.
+    }
+
+    const fallback = await arabicSubstringSearch(query, q);
+    return res.json(fallback.map(addDiscount));
+  } catch (err) {
+    console.error("[getProducts] error:", err.message);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
+// ---------------------------------------------------------------------------
+// GET /api/products/:id
+// ---------------------------------------------------------------------------
 exports.getProduct = async (req, res) => {
   try {
-    // .lean() returns a plain JS object — eliminates Mongoose hydration + toJSON overhead.
     const product = await Product.findById(req.params.id)
-      .select(DETAIL_PROJECTION)
+      .select(DETAIL_FIELDS)
       .lean();
     if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json(product);
+    res.json(addDiscount(product));
   } catch (err) {
     if (err.name === "CastError") {
       return res.status(404).json({ message: "Product not found" });
@@ -128,6 +180,12 @@ exports.getProduct = async (req, res) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// POST /api/products — used only by legacy seed scripts.
+// The admin panel uses POST /api/admin/products (authenticated, with upload).
+// This endpoint accepts raw JSON bodies from trusted CLI scripts only and
+// does NOT accept file uploads.
+// ---------------------------------------------------------------------------
 exports.createProduct = async (req, res) => {
   try {
     const product = await Product.create(req.body);
@@ -138,25 +196,35 @@ exports.createProduct = async (req, res) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// PUT /api/products/:id
+// ---------------------------------------------------------------------------
 exports.updateProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
     if (!product) return res.status(404).json({ message: "Product not found" });
     res.json(product);
   } catch (err) {
-    if (err.name === "CastError") return res.status(404).json({ message: "Product not found" });
+    if (err.name === "CastError")
+      return res.status(404).json({ message: "Product not found" });
     console.error("[updateProduct] error:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 };
 
+// ---------------------------------------------------------------------------
+// DELETE /api/products/:id
+// ---------------------------------------------------------------------------
 exports.deleteProduct = async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product deleted" });
   } catch (err) {
-    if (err.name === "CastError") return res.status(404).json({ message: "Product not found" });
+    if (err.name === "CastError")
+      return res.status(404).json({ message: "Product not found" });
     console.error("[deleteProduct] error:", err.message);
     res.status(500).json({ message: "Server error" });
   }

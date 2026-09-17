@@ -3,7 +3,11 @@ const mongoose = require("mongoose");
 const connectDB = async () => {
   try {
     // Warn at startup if using the default insecure JWT secret.
-    if (process.env.JWT_SECRET === "burj_super_secret_jwt_key_2025_change_this_in_production") {
+    if (
+      !process.env.JWT_SECRET ||
+      process.env.JWT_SECRET.startsWith("CHANGE_THIS") ||
+      process.env.JWT_SECRET === "burj_super_secret_jwt_key_2025_change_this_in_production"
+    ) {
       console.warn("[SECURITY WARNING] JWT_SECRET is using the default insecure value. Change it in .env before going to production!");
     }
 
