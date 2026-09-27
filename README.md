@@ -61,7 +61,6 @@ backend/
 │   └── auth.js             # authMiddleware المشترك
 ├── models/
 │   ├── Admin.js
-│   ├── Bank.js
 │   ├── Banner.js
 │   ├── CardFieldSettings.js
 │   ├── CategoryBanner.js
@@ -144,11 +143,6 @@ backend/
 
 ### `Review.js`
 **Index:** `{ approved: 1, createdAt: -1 }` للـ endpoint العام الذي يفلتر على `approved=true`.
-
----
-
-### `Bank.js`
-**Index:** `{ createdAt: -1 }` لدعم الترتيب في قائمة البنوك.
 
 ---
 
@@ -286,12 +280,6 @@ backend/
 | PUT | `/api/admin/products/:id` | أدمن (multipart) |
 | DELETE | `/api/admin/products/:id` | أدمن |
 
-#### البنوك
-| Method | Path | Auth |
-|---|---|---|
-| GET | `/api/admin/banks` | أدمن |
-| POST/PUT | `/api/admin/banks/:id?` | أدمن |
-| DELETE | `/api/admin/banks/:id` | أدمن |
 
 #### بانرات التصنيفات (cached)
 | Method | Path | Auth |

@@ -14,6 +14,9 @@ connectDB();
 const app = express();
 const isProd = process.env.NODE_ENV === "production";
 
+// Trust first proxy (Render, Railway, Fly.io, Cloudflare, etc.) so req.ip returns the real client IP
+app.set("trust proxy", 1);
+
 // Compress all HTTP response payloads (reduces egress bandwidth by 60-70%).
 app.use(compression());
 

@@ -197,6 +197,7 @@ router.get("/:id/public", async (req, res) => {
     if (!order) return res.status(404).json({ ok: false, error: "not found" });
     res.json(order);
   } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ ok: false, error: "not found" });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -208,6 +209,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
     if (!order) return res.status(404).json({ ok: false, error: "not found" });
     res.json(order);
   } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ ok: false, error: "not found" });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -223,8 +225,10 @@ router.put("/:id/status", authMiddleware, csrfProtection, async (req, res) => {
       { status },
       { new: true }
     );
+    if (!order) return res.status(404).json({ ok: false, error: "not found" });
     res.json(order);
   } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ ok: false, error: "not found" });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -245,8 +249,10 @@ router.put("/:id/financials", authMiddleware, csrfProtection, async (req, res) =
       },
       { new: true }
     );
+    if (!order) return res.status(404).json({ ok: false, error: "not found" });
     res.json(order);
   } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ ok: false, error: "not found" });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -258,6 +264,7 @@ router.delete("/:id", authMiddleware, csrfProtection, async (req, res) => {
     if (!order) return res.status(404).json({ ok: false, error: "not found" });
     res.json({ ok: true });
   } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ ok: false, error: "not found" });
     res.status(500).json({ ok: false, error: err.message });
   }
 });

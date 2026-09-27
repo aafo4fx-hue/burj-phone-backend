@@ -1,6 +1,38 @@
 const Product = require("../models/Product");
 
 // ---------------------------------------------------------------------------
+// In-process TTL cache for product queries (reduces MongoDB load & CPU)
+// ---------------------------------------------------------------------------
+const PRODUCTS_CACHE_TTL_MS = 60_000; // 60 seconds
+const MAX_PRODUCTS_CACHE_ENTRIES = 100;
+const _productsCache = new Map();
+
+function cacheGet(key) {
+  const entry = _productsCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    _productsCache.delete(key);
+    return null;
+  }
+  _productsCache.delete(key);
+  _productsCache.set(key, entry);
+  return entry.data;
+}
+
+function cacheSet(key, data) {
+  if (_productsCache.size >= MAX_PRODUCTS_CACHE_ENTRIES) {
+    _productsCache.delete(_productsCache.keys().next().value);
+  }
+  _productsCache.set(key, { data, expiresAt: Date.now() + PRODUCTS_CACHE_TTL_MS });
+}
+
+function invalidateProductsCache() {
+  _productsCache.clear();
+}
+
+exports.invalidateProductsCache = invalidateProductsCache;
+
+// ---------------------------------------------------------------------------
 // Projection strings
 // discountPercent is a virtual — it cannot appear in a .select() string.
 // It is appended to each lean plain-object via addDiscount() below.
