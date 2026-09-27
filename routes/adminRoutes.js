@@ -529,33 +529,39 @@ router.post("/main-categories", authMiddleware, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "اسم التصنيف مطلوب" });
-    // Run both existence checks in parallel — independent queries.
     const trimmed = name.trim();
+    // Check both products and main category records
     const [inProducts, inMC] = await Promise.all([
-      Product.findOne({ category: trimmed }).lean(),
+      Product.findOne({ subCategory: trimmed }).lean(),
       MainCategory.findOne({ name: trimmed }).lean(),
     ]);
     if (inProducts || inMC) return res.status(400).json({ error: "التصنيف موجود بالفعل" });
     const cat = await MainCategory.create({ name: trimmed });
+    invalidateCache("adminMainCategoriesExtra", "adminCategories");
     res.status(201).json({ name: cat.name, count: 0 });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
 
-// GET /api/admin/main-categories/extra  (admin — parallel queries)
+// GET /api/admin/main-categories/extra  (admin — cached to eliminate repeated aggregations)
 router.get("/main-categories/extra", authMiddleware, async (req, res) => {
   try {
+    const cached = cacheGet("adminMainCategoriesExtra");
+    if (cached) return res.json(cached);
+
     const [productAgg, manualCats] = await Promise.all([
       Product.aggregate([
-        { $match: { subCategory: { $ne: null, $exists: true } } },
+        { $match: { subCategory: { $exists: true, $nin: [null, ""] } } },
         { $group: { _id: "$subCategory", count: { $sum: 1 } } },
       ]),
       MainCategory.find().lean(),
     ]);
     const productMap = new Map(productAgg.map((r) => [r._id, r.count]));
     const allNames   = new Set([...productMap.keys(), ...manualCats.map((c) => c.name)]);
-    res.json([...allNames].sort().map((name) => ({ name, count: productMap.get(name) || 0 })));
+    const data = [...allNames].sort().map((name) => ({ name, count: productMap.get(name) || 0 }));
+    cacheSet("adminMainCategoriesExtra", data);
+    res.json(data);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
@@ -567,15 +573,19 @@ router.put("/main-categories/rename", authMiddleware, async (req, res) => {
     const { oldName, newName } = req.body;
     if (!oldName || !newName) return res.status(400).json({ error: "الاسم القديم والجديد مطلوبان" });
     const trimNew = newName.trim();
-    if (trimNew !== oldName.trim()) {
-      const exists = await Product.findOne({ subCategory: trimNew }).lean();
-      if (exists) return res.status(400).json({ error: "التصنيف موجود بالفعل" });
+    const trimOld = oldName.trim();
+    if (trimNew !== trimOld) {
+      const [existsProduct, existsMC] = await Promise.all([
+        Product.findOne({ subCategory: trimNew }).lean(),
+        MainCategory.findOne({ name: trimNew }).lean(),
+      ]);
+      if (existsProduct || existsMC) return res.status(400).json({ error: "التصنيف موجود بالفعل" });
     }
     await Promise.all([
-      Product.updateMany({ subCategory: oldName }, { $set: { subCategory: trimNew } }),
-      MainCategory.updateOne({ name: oldName }, { $set: { name: trimNew } }),
+      Product.updateMany({ subCategory: trimOld }, { $set: { subCategory: trimNew } }),
+      MainCategory.updateOne({ name: trimOld }, { $set: { name: trimNew } }),
     ]);
-    invalidateCache("subCategoriesPublic", "homeSettings");
+    invalidateCache("adminMainCategoriesExtra", "adminCategories", "subCategoriesPublic", "homeSettings");
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -587,14 +597,12 @@ router.delete("/main-categories/remove", authMiddleware, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "اسم التصنيف مطلوب" });
+    const trimName = name.trim();
     await Promise.all([
-      // ✅ FIX #4: products store the category in subCategory, not category.
-      // The old query { category: name } never matched any product, so deleted
-      // categories remained linked to their products silently.
-      Product.updateMany({ subCategory: name }, { $unset: { subCategory: "" } }),
-      MainCategory.deleteOne({ name }),
+      Product.updateMany({ subCategory: trimName }, { $unset: { subCategory: "" } }),
+      MainCategory.deleteOne({ name: trimName }),
     ]);
-    invalidateCache("subCategoriesPublic", "homeSettings");
+    invalidateCache("adminMainCategoriesExtra", "adminCategories", "subCategoriesPublic", "homeSettings");
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -675,7 +683,7 @@ router.put("/sub-categories/rename", authMiddleware, async (req, res) => {
       ),
       SubCategory.updateOne({ name: oldName }, { $set: { name: newName.trim() } }),
     ]);
-    invalidateCache("subCategoriesPublic", "homeSettings");
+    invalidateCache("subCategoriesPublic", "homeSettings", "adminSubCategorySettings");
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -694,22 +702,26 @@ router.delete("/sub-categories/remove", authMiddleware, async (req, res) => {
       SubCategorySettings.deleteMany({ subCategory: name }),
       SubCategory.deleteOne({ name }),
     ]);
-    invalidateCache("subCategoriesPublic", "homeSettings");
+    invalidateCache("subCategoriesPublic", "homeSettings", "adminSubCategorySettings");
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
 
-// GET /api/admin/sub-categories/settings  (admin)
+// GET /api/admin/sub-categories/settings  (admin — cached)
 router.get("/sub-categories/settings", authMiddleware, async (req, res) => {
   try {
+    const cached = cacheGet("adminSubCategorySettings");
+    if (cached) return res.json(cached);
+
     // Exclude image (not needed in the admin table) and internal Mongoose fields
     // to reduce payload size — image is only used by the public homepage endpoint.
     const settings = await SubCategorySettings.find(
-      { subCategory: { $ne: "__max__" } },
+      { category: { $ne: "__config__" } },
       { category: 1, subCategory: 1, showInHome: 1, order: 1, _id: 0 }
     ).lean();
+    cacheSet("adminSubCategorySettings", settings);
     res.json(settings);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -730,7 +742,7 @@ router.patch("/sub-categories/settings/toggle", authMiddleware, async (req, res)
       { $set: { showInHome: newValue } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
-    invalidateCache("homeSettings");
+    invalidateCache("homeSettings", "adminSubCategorySettings");
     res.json({ showInHome: doc.showInHome });
   } catch (err) {
     console.error("[settings/toggle error]", err.message);
@@ -748,7 +760,7 @@ router.patch("/sub-categories/settings/order", authMiddleware, async (req, res) 
       { $set: { order: Number(order) || 0 } },
       { upsert: true }
     );
-    invalidateCache("homeSettings");
+    invalidateCache("homeSettings", "adminSubCategorySettings");
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -867,7 +879,7 @@ router.patch("/sub-categories/max", authMiddleware, async (req, res) => {
       { $set: { order: val, showInHome: false } },
       { upsert: true }
     );
-    invalidateCache("subCategoriesMax");
+    invalidateCache("subCategoriesMax", "homeSettings", "adminSubCategorySettings");
     res.json({ max: val });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1185,7 +1197,7 @@ router.post(
       const product = await Product.create(productData);
 
       // A new product may introduce a new category or change counts — bust the cached list.
-      invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic");
+      invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic", "adminMainCategoriesExtra");
 
       res.status(201).json(product);
     } catch (err) {
@@ -1293,7 +1305,7 @@ router.delete("/products/:id", authMiddleware, async (req, res) => {
     }
 
     // Invalidate categories and subcategories caches after product deletion
-    invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic");
+    invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic", "adminMainCategoriesExtra");
 
     res.json({ success: true });
   } catch {
@@ -1396,7 +1408,7 @@ router.put(
       await product.save();
 
       // Category or counts may have changed — invalidate caches.
-      invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic");
+      invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic", "adminMainCategoriesExtra");
 
       res.json(product);
     } catch (err) {
