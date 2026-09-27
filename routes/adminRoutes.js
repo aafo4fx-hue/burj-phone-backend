@@ -245,11 +245,19 @@ router.post("/company/upload/:field", authMiddleware, upload.single("image"), as
     const url    = result.secure_url;
     let company  = await Company.findOne();
     if (!company) company = await Company.create({});
-    await deleteFromCloudinary(company[field]);
+    const oldUrl = company[field];
     company[field] = url;
     await company.save();
     invalidateCache("company");
     res.json({ url });
+
+    // Non-blocking cleanup: run external Cloudinary deletion in background
+    // to free the Node.js connection and respond in milliseconds
+    if (oldUrl) {
+      deleteFromCloudinary(oldUrl, "image").catch((e) =>
+        console.error("Cloudinary cleanup error:", e.message)
+      );
+    }
   } catch (err) {
     console.error("company upload error:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -263,15 +271,23 @@ router.delete("/company/image/:field", authMiddleware, async (req, res) => {
     if (!ALLOWED_COMPANY_FIELDS.has(field)) return res.status(400).json({ error: "حقل غير مسموح" });
     const company = await Company.findOne();
     if (!company) return res.json({ success: true });
-    await deleteFromCloudinary(company[field]);
+    const oldUrl = company[field];
     company[field] = "";
     await company.save();
     invalidateCache("company");
     res.json({ success: true });
+
+    // Non-blocking cleanup
+    if (oldUrl) {
+      deleteFromCloudinary(oldUrl, "image").catch((e) =>
+        console.error("Cloudinary cleanup error:", e.message)
+      );
+    }
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
+
 
 // GET /api/admin/company  (public — cached)
 router.get("/company", async (req, res) => {
@@ -365,8 +381,11 @@ router.put("/company", authMiddleware, async (req, res) => {
       }
     }
 
+    // Run cleanup asynchronously in background — saves multiple blocking HTTP roundtrips to Cloudinary
     if (cleanupPromises.length > 0) {
-      await Promise.allSettled(cleanupPromises);
+      Promise.allSettled(cleanupPromises).catch((e) =>
+        console.error("PUT company Cloudinary cleanup error:", e)
+      );
     }
 
     // Apply only whitelisted fields — drop anything not in the allowed set.
@@ -377,7 +396,8 @@ router.put("/company", authMiddleware, async (req, res) => {
     }
     await company.save();
     invalidateCache("company");
-    res.json(company);
+    res.json({ success: true, message: "تم الحفظ بنجاح" });
+
   } catch (err) {
     console.error("company PUT error:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
