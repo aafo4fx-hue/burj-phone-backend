@@ -165,16 +165,13 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-productSchema.index({ createdAt: -1 });
-productSchema.index({ createdAt: 1 });
+// Compound indexes — each covers its prefix columns too, so standalone
+// single-field indexes are not needed separately.
+productSchema.index({ category: 1, createdAt: -1 }); // covers category-only + createdAt sorts
+productSchema.index({ brand: 1, createdAt: -1 });    // covers brand-only queries
 productSchema.index({ category: 1, inStock: 1 });
 productSchema.index({ brand: 1, inStock: 1 });
 productSchema.index({ category: 1, brand: 1 });
-productSchema.index({ category: 1, createdAt: -1 });
-productSchema.index({ category: 1, createdAt: 1 });
-productSchema.index({ brand: 1, createdAt: -1 });
-productSchema.index({ brand: 1, createdAt: 1 });
-productSchema.index({ subCategory: 1, createdAt: -1 });
 productSchema.index({ subCategory: 1 });
 productSchema.index({ name: "text", category: "text", subCategory: "text", brand: "text" });
 

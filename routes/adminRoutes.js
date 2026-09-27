@@ -292,15 +292,9 @@ router.get("/company", async (req, res) => {
       company = doc.toObject();
     }
 
-    // Ensure footerItems always has 3 slots (legacy guard).
-    if (!company.footerItems || company.footerItems.length === 0) {
-      const defaultItems = [
-        { image: "", linkType: "link", link: "", file: "" },
-        { image: "", linkType: "link", link: "", file: "" },
-        { image: "", linkType: "link", link: "", file: "" },
-      ];
-      await Company.updateOne({ _id: company._id }, { $set: { footerItems: defaultItems } });
-      company.footerItems = defaultItems;
+    // Ensure footerItems is an array.
+    if (!Array.isArray(company.footerItems)) {
+      company.footerItems = [];
     }
 
     cacheSet("company", company);
@@ -340,6 +334,41 @@ router.put("/company", authMiddleware, async (req, res) => {
     if (body.linkType1 !== undefined) { body.link1Type = body.linkType1; delete body.linkType1; }
     if (body.linkType2 !== undefined) { body.link2Type = body.linkType2; delete body.linkType2; }
 
+    const cleanupPromises = [];
+
+    // Clean up single images if cleared or replaced
+    for (const imgField of ["qrImage", "img1", "img2"]) {
+      if (body[imgField] !== undefined && body[imgField] !== company[imgField] && company[imgField]) {
+        cleanupPromises.push(deleteFromCloudinary(company[imgField], "image"));
+      }
+    }
+
+    // Clean up single raw files if cleared or replaced
+    for (const fileField of ["file1", "file2"]) {
+      if (body[fileField] !== undefined && body[fileField] !== company[fileField] && company[fileField]) {
+        cleanupPromises.push(deleteFromCloudinary(company[fileField], "raw"));
+      }
+    }
+
+    // Clean up footerItems images/files if removed or replaced
+    if (Array.isArray(body.footerItems) && Array.isArray(company.footerItems)) {
+      const newImages = new Set(body.footerItems.map((it) => it && it.image).filter(Boolean));
+      const newFiles = new Set(body.footerItems.map((it) => it && it.file).filter(Boolean));
+
+      for (const oldItem of company.footerItems) {
+        if (oldItem && oldItem.image && !newImages.has(oldItem.image)) {
+          cleanupPromises.push(deleteFromCloudinary(oldItem.image, "image"));
+        }
+        if (oldItem && oldItem.file && !newFiles.has(oldItem.file)) {
+          cleanupPromises.push(deleteFromCloudinary(oldItem.file, "raw"));
+        }
+      }
+    }
+
+    if (cleanupPromises.length > 0) {
+      await Promise.allSettled(cleanupPromises);
+    }
+
     // Apply only whitelisted fields — drop anything not in the allowed set.
     for (const key of Object.keys(body)) {
       if (ALLOWED_COMPANY_PUT_FIELDS.has(key)) {
@@ -349,7 +378,8 @@ router.put("/company", authMiddleware, async (req, res) => {
     await company.save();
     invalidateCache("company");
     res.json(company);
-  } catch {
+  } catch (err) {
+    console.error("company PUT error:", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
@@ -616,13 +646,94 @@ router.post("/sub-categories", authMiddleware, async (req, res) => {
     if (!name) return res.status(400).json({ error: "اسم التصنيف الفرعي مطلوب" });
     const trimmed = name.trim();
     const [inProducts, existsSC] = await Promise.all([
-      Product.findOne({ subCategory: trimmed }).lean(),
+      Product.findOne({ $or: [{ category: trimmed }, { subCategory: trimmed }] }).lean(),
       SubCategory.findOne({ name: trimmed }).lean(),
     ]);
     if (inProducts || existsSC) return res.status(400).json({ error: "التصنيف الفرعي موجود بالفعل" });
     const sc = await SubCategory.create({ name: trimmed });
-    res.status(201).json({ name: sc.name, count: 0 });
+    invalidateCache("adminSubCategories", "adminSubCategorySettings", "subCategoriesPublic", "homeSettings");
+    res.status(201).json({ name: sc.name, category: "", count: 0 });
   } catch {
+    res.status(500).json({ error: "خطأ في الخادم" });
+  }
+});
+
+// GET /api/admin/sub-categories/all-data (admin consolidated — reduces 4 requests to 1)
+router.get("/sub-categories/all-data", authMiddleware, async (req, res) => {
+  try {
+    const cachedCategories = cacheGet("adminSubCategories");
+    const cachedSettings = cacheGet("adminSubCategorySettings");
+    const cachedMax = cacheGet("subCategoriesMax");
+
+    let formatted = cachedCategories;
+    let settings = cachedSettings;
+    let max = cachedMax ? cachedMax.max : null;
+
+    const promises = [];
+
+    if (!formatted) {
+      promises.push(
+        Promise.all([
+          Product.aggregate([
+            { $match: { category: { $ne: null, $exists: true, $nin: [""] } } },
+            {
+              $group: {
+                _id: "$category",
+                count: { $sum: 1 },
+                mainCategory: { $first: "$subCategory" },
+              },
+            },
+            { $sort: { _id: 1 } },
+          ]),
+          SubCategory.find().lean(),
+        ]).then(([result, extraDocs]) => {
+          const productMap = new Map(result.map((r) => [r._id, { count: r.count, mainCategory: r.mainCategory || "" }]));
+          const allNames = new Set([...productMap.keys(), ...extraDocs.map((s) => s.name)]);
+          formatted = Array.from(allNames).sort().map((name) => {
+            const p = productMap.get(name);
+            return {
+              name,
+              category: p?.mainCategory || "",
+              count: p?.count || 0,
+            };
+          });
+          cacheSet("adminSubCategories", formatted);
+        })
+      );
+    }
+
+    if (!settings) {
+      promises.push(
+        SubCategorySettings.find(
+          { category: { $ne: "__config__" } },
+          { category: 1, subCategory: 1, showInHome: 1, order: 1, image: 1, _id: 0 }
+        ).lean().then((docs) => {
+          settings = docs;
+          cacheSet("adminSubCategorySettings", settings);
+        })
+      );
+    }
+
+    if (max === null) {
+      promises.push(
+        SubCategorySettings.findOne({ category: "__config__", subCategory: "__max__" }).lean().then((doc) => {
+          max = doc ? doc.order : 4;
+          cacheSet("subCategoriesMax", { max });
+        })
+      );
+    }
+
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
+
+    res.json({
+      items: formatted || [],
+      settings: settings || [],
+      max: max ?? 4,
+    });
+  } catch (err) {
+    console.error("[sub-categories all-data error]", err);
     res.status(500).json({ error: "خطأ في الخادم" });
   }
 });
@@ -640,13 +751,13 @@ router.get("/sub-categories/all", authMiddleware, async (req, res) => {
 // GET /api/admin/sub-categories/extra  (admin — parallel queries)
 router.get("/sub-categories/extra", authMiddleware, async (req, res) => {
   try {
-    const [productSubCats, extraDocs] = await Promise.all([
-      Product.distinct("subCategory"),
+    const [productCats, extraDocs] = await Promise.all([
+      Product.distinct("category"),
       SubCategory.find().lean(),
     ]);
-    const productSet = new Set(productSubCats.filter(Boolean));
+    const productSet = new Set(productCats.filter(Boolean));
     const extra = extraDocs.filter((s) => !productSet.has(s.name));
-    res.json(extra.map((s) => ({ name: s.name, count: 0, _id: s._id })));
+    res.json(extra.map((s) => ({ name: s.name, category: "", count: 0, _id: s._id })));
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
@@ -658,12 +769,32 @@ router.get("/sub-categories", authMiddleware, async (req, res) => {
     const cached = cacheGet("adminSubCategories");
     if (cached) return res.json(cached);
 
-    const result = await Product.aggregate([
-      { $match: { category: { $ne: null, $exists: true } } },
-      { $group: { _id: "$category", count: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
+    const [result, extraDocs] = await Promise.all([
+      Product.aggregate([
+        { $match: { category: { $ne: null, $exists: true, $nin: [""] } } },
+        {
+          $group: {
+            _id: "$category",
+            count: { $sum: 1 },
+            mainCategory: { $first: "$subCategory" },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      SubCategory.find().lean(),
     ]);
-    const formatted = result.map((r) => ({ category: r._id, name: r._id, count: r.count }));
+
+    const productMap = new Map(result.map((r) => [r._id, { count: r.count, mainCategory: r.mainCategory || "" }]));
+    const allNames = new Set([...productMap.keys(), ...extraDocs.map((s) => s.name)]);
+    const formatted = Array.from(allNames).sort().map((name) => {
+      const p = productMap.get(name);
+      return {
+        name,
+        category: p?.mainCategory || "",
+        count: p?.count || 0,
+      };
+    });
+
     cacheSet("adminSubCategories", formatted);
     res.json(formatted);
   } catch {
@@ -676,14 +807,31 @@ router.put("/sub-categories/rename", authMiddleware, async (req, res) => {
   try {
     const { oldName, oldCategory, newName, newCategory } = req.body;
     if (!oldName || !newName) return res.status(400).json({ error: "الاسم القديم والجديد مطلوبان" });
+    const trimOldName = oldName.trim();
+    const trimNewName = newName.trim();
+    const trimNewCat = newCategory ? newCategory.trim() : undefined;
+
+    const updateProductDoc = { category: trimNewName };
+    if (trimNewCat !== undefined) {
+      updateProductDoc.subCategory = trimNewCat;
+    }
+
     await Promise.all([
-      Product.updateMany(
-        { subCategory: oldName, category: oldCategory },
-        { $set: { subCategory: newName.trim(), category: (newCategory || oldCategory).trim() } }
+      // Update products where category matches oldName
+      Product.updateMany({ category: trimOldName }, { $set: updateProductDoc }),
+      // Update SubCategory document
+      SubCategory.updateOne({ name: trimOldName }, { $set: { name: trimNewName } }),
+      // Update SubCategorySettings so showInHome, order, and image are preserved
+      SubCategorySettings.updateMany(
+        { category: trimOldName },
+        { $set: { category: trimNewName, subCategory: trimNewName } }
       ),
-      SubCategory.updateOne({ name: oldName }, { $set: { name: newName.trim() } }),
+      SubCategorySettings.updateMany(
+        { subCategory: trimOldName },
+        { $set: { subCategory: trimNewName } }
+      ),
     ]);
-    invalidateCache("subCategoriesPublic", "homeSettings", "adminSubCategorySettings");
+    invalidateCache("adminSubCategories", "adminSubCategorySettings", "subCategoriesPublic", "homeSettings", "adminCategories");
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -695,14 +843,28 @@ router.delete("/sub-categories/remove", authMiddleware, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "الاسم مطلوب" });
+    const trimName = name.trim();
+
+    // Check if there is an image to delete from Cloudinary
+    const settingWithImg = await SubCategorySettings.findOne({
+      $or: [{ category: trimName }, { subCategory: trimName }],
+      image: { $exists: true, $ne: "" },
+    }).lean();
+
+    if (settingWithImg?.image) {
+      await deleteFromCloudinary(settingWithImg.image).catch(() => {});
+    }
+
     await Promise.all([
-      // Remove this sub-category from all products that carry it
-      Product.updateMany({ subCategory: name }, { $unset: { subCategory: "" } }),
-      // Delete settings rows where this name is the subCategory (not category)
-      SubCategorySettings.deleteMany({ subCategory: name }),
-      SubCategory.deleteOne({ name }),
+      // Unset category from all products that carry it
+      Product.updateMany({ category: trimName }, { $unset: { category: "" } }),
+      // Delete settings rows
+      SubCategorySettings.deleteMany({
+        $or: [{ category: trimName }, { subCategory: trimName }],
+      }),
+      SubCategory.deleteOne({ name: trimName }),
     ]);
-    invalidateCache("subCategoriesPublic", "homeSettings", "adminSubCategorySettings");
+    invalidateCache("adminSubCategories", "adminSubCategorySettings", "subCategoriesPublic", "homeSettings", "adminCategories");
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -715,11 +877,9 @@ router.get("/sub-categories/settings", authMiddleware, async (req, res) => {
     const cached = cacheGet("adminSubCategorySettings");
     if (cached) return res.json(cached);
 
-    // Exclude image (not needed in the admin table) and internal Mongoose fields
-    // to reduce payload size — image is only used by the public homepage endpoint.
     const settings = await SubCategorySettings.find(
       { category: { $ne: "__config__" } },
-      { category: 1, subCategory: 1, showInHome: 1, order: 1, _id: 0 }
+      { category: 1, subCategory: 1, showInHome: 1, order: 1, image: 1, _id: 0 }
     ).lean();
     cacheSet("adminSubCategorySettings", settings);
     res.json(settings);
@@ -735,8 +895,8 @@ router.patch("/sub-categories/settings/toggle", authMiddleware, async (req, res)
     if (!category || !subCategory) return res.status(400).json({ error: "البيانات مطلوبة" });
 
     // Read current value first, then atomically flip it.
-    const existing  = await SubCategorySettings.findOne({ category, subCategory }).lean();
-    const newValue  = existing ? !existing.showInHome : true;
+    const existing = await SubCategorySettings.findOne({ category, subCategory }).lean();
+    const newValue = existing ? !existing.showInHome : true;
     const doc = await SubCategorySettings.findOneAndUpdate(
       { category, subCategory },
       { $set: { showInHome: newValue } },
@@ -772,12 +932,9 @@ router.post("/sub-categories/image/:category", authMiddleware, upload.single("im
   try {
     const { category } = req.params;
     if (!req.file) return res.status(400).json({ error: "لم يتم رفع صورة" });
-    // Find one existing doc to get its current image (for Cloudinary deletion).
     const existing = await SubCategorySettings.findOne({ category, subCategory: { $ne: "__max__" } }).lean();
     if (existing?.image) await deleteFromCloudinary(existing.image);
     const result = await uploadToCloudinary(req.file.buffer, "sub-categories");
-    // updateMany returns { modifiedCount, ... }. If nothing was updated, no doc
-    // existed yet — create one so the image is persisted.
     const updateResult = await SubCategorySettings.updateMany(
       { category, subCategory: { $ne: "__max__" } },
       { $set: { image: result.secure_url } }
@@ -785,8 +942,27 @@ router.post("/sub-categories/image/:category", authMiddleware, upload.single("im
     if (updateResult.modifiedCount === 0) {
       await SubCategorySettings.create({ category, subCategory: category, image: result.secure_url });
     }
-    invalidateCache("subCategoriesPublic", "homeSettings");
+    invalidateCache("subCategoriesPublic", "homeSettings", "adminSubCategorySettings");
     res.json({ url: result.secure_url });
+  } catch {
+    res.status(500).json({ error: "خطأ في الخادم" });
+  }
+});
+
+// DELETE /api/admin/sub-categories/image/:category
+router.delete("/sub-categories/image/:category", authMiddleware, async (req, res) => {
+  try {
+    const { category } = req.params;
+    const existing = await SubCategorySettings.findOne({ category, subCategory: { $ne: "__max__" } }).lean();
+    if (existing?.image) {
+      await deleteFromCloudinary(existing.image).catch(() => {});
+    }
+    await SubCategorySettings.updateMany(
+      { category, subCategory: { $ne: "__max__" } },
+      { $set: { image: "" } }
+    );
+    invalidateCache("subCategoriesPublic", "homeSettings", "adminSubCategorySettings");
+    res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
@@ -1524,10 +1700,10 @@ router.delete("/company/footer-items/:index", authMiddleware, async (req, res) =
     if (isNaN(index) || index < 0 || index >= company.footerItems.length)
       return res.status(400).json({ error: "رقم غير صحيح" });
     const item = company.footerItems[index];
-    // Delete image and file in parallel.
-    await Promise.all([
-      deleteFromCloudinary(item.image),
-      deleteFromCloudinary(item.file),
+    // Delete image and file in parallel (resiliently)
+    await Promise.allSettled([
+      deleteFromCloudinary(item.image, "image"),
+      deleteFromCloudinary(item.file, "raw"),
     ]);
     company.footerItems.splice(index, 1);
     company.markModified("footerItems");

@@ -63,17 +63,26 @@ function uploadToCloudinary(buffer, folder, options = {}) {
   });
 }
 
-async function deleteFromCloudinary(url, resource_type = "image") {
+async function deleteFromCloudinary(url, resource_type) {
   if (!url || !url.includes("cloudinary.com")) return;
   try {
+    const isRaw = resource_type === "raw" || url.includes("/raw/upload/") || url.includes("/raw/");
+    const actualResourceType = isRaw ? "raw" : (resource_type || "image");
+
     const parts = url.split("/");
     const uploadIndex = parts.indexOf("upload");
     if (uploadIndex === -1) return;
     let pathParts = parts.slice(uploadIndex + 1);
     if (/^v\d+$/.test(pathParts[0])) pathParts = pathParts.slice(1);
-    const publicId = pathParts.join("/").replace(/\.[^/.]+$/, "");
+
+    let publicId = pathParts.join("/");
+    // For images, Cloudinary strips the file extension in public_id.
+    // For raw files (PDFs, docs), the public_id retains the file extension.
+    if (!isRaw) {
+      publicId = publicId.replace(/\.[^/.]+$/, "");
+    }
     if (!publicId) return;
-    await cloudinary.uploader.destroy(publicId, { resource_type });
+    await cloudinary.uploader.destroy(publicId, { resource_type: actualResourceType });
   } catch (e) {
     console.error("Cloudinary delete error:", e.message);
   }

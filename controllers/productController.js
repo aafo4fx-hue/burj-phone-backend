@@ -4,7 +4,7 @@ const SubCategorySettings = require("../models/SubCategorySettings");
 // ---------------------------------------------------------------------------
 // In-process TTL cache for product queries (reduces MongoDB load & CPU)
 // ---------------------------------------------------------------------------
-const PRODUCTS_CACHE_TTL_MS = 60_000; // 60 seconds
+const PRODUCTS_CACHE_TTL_MS = 5 * 60_000; // 5 minutes — safe under Next.js ISR (revalidate: 3600)
 const MAX_PRODUCTS_CACHE_ENTRIES = 100;
 const _productsCache = new Map();
 
@@ -215,7 +215,14 @@ exports.getProducts = async (req, res) => {
       const escapedBrand = brand.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       query.brand = { $regex: new RegExp(`^${escapedBrand}$`, "i") };
     }
-    if (category) query.category = buildCategoryQuery(category);
+    if (category) {
+      if (category.includes(",")) {
+        const cats = category.split(",").map((c) => c.trim()).filter(Boolean);
+        query.$or = cats.map((c) => ({ category: buildCategoryQuery(c) }));
+      } else {
+        query.category = buildCategoryQuery(category);
+      }
+    }
 
     if (!q) {
       const effectiveLimit = limitParam > 0 ? limitParam : 500;
