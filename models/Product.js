@@ -27,40 +27,59 @@ const sectionSub = new mongoose.Schema({
   isActive:    { type: Boolean, default: true },
 }, { _id: true });
 
+const storageOptionSubSchema = new mongoose.Schema(
+  {
+    storage: String,
+    ram: String,
+    gpu: String,
+    chip: String,
+    size: String,
+    originalPrice: { type: Number, min: 0 },
+    salePrice: { type: Number, min: 0 },
+  },
+  { _id: false }
+);
+
+const variantSubSchema = new mongoose.Schema(
+  {
+    name: String,
+    color: String,
+    colorCode: String,
+    defaultStorage: String,
+    images: [String],
+    storageOptions: [storageOptionSubSchema],
+  },
+  { _id: false }
+);
+
+const specItemSubSchema = new mongoose.Schema(
+  { key: String, value: String },
+  { _id: false }
+);
+
+const specGroupSubSchema = new mongoose.Schema(
+  {
+    group: { type: String, required: true },
+    items: [specItemSubSchema],
+  },
+  { _id: false }
+);
+
 const productSchema = new mongoose.Schema(
   {
-    name:          { type: String, required: true },
-    brief:         { type: String },
-    originalPrice: { type: Number, required: true },
-    salePrice:     { type: Number },
+    name:          { type: String, required: true, trim: true, maxlength: 250 },
+    brief:         { type: String, trim: true },
+    originalPrice: { type: Number, required: true, min: [0, "السعر لا يمكن أن يكون سالباً"] },
+    salePrice:     { type: Number, min: [0, "سعر التخفيض لا يمكن أن يكون سالباً"] },
     description:   { type: String },
     image:         { type: String },
     images:        [{ type: String }],
-    variants: [
-      {
-        name:           String,
-        color:          String,
-        colorCode:      String,
-        defaultStorage: String,
-        images:         [String],
-        storageOptions: [
-          {
-            storage:       String,
-            ram:           String,
-            gpu:           String,
-            chip:          String,
-            size:          String,
-            originalPrice: Number,
-            salePrice:     Number,
-          },
-        ],
-      },
-    ],
-    color:      { type: String },
-    storage:    { type: String },
-    network:    { type: String },
-    screenSize: { type: String },
-    overview:   { type: String },
+    variants:      [variantSubSchema],
+    color:         { type: String },
+    storage:       { type: String },
+    network:       { type: String },
+    screenSize:    { type: String },
+    overview:      { type: String },
     overviewImage: { type: String },
     specs: {
       screen:      String,
@@ -75,12 +94,7 @@ const productSchema = new mongoose.Schema(
       os:          String,
       extras:      String,
     },
-    specGroups: [
-      {
-        group: { type: String, required: true },
-        items: [{ key: String, value: String }],
-      },
-    ],
+    specGroups: [specGroupSubSchema],
     features: {
       screenAndDesign: [String],
       performance: [String],
@@ -118,20 +132,20 @@ const productSchema = new mongoose.Schema(
     },
     sections:     [sectionSub],
     freeDelivery: { type: Boolean, default: true },
-    deliveryTime: { type: String, default: "24 ساعة" },
-    warrantyYears: { type: Number, default: 2 },
+    deliveryTime: { type: String, default: "24 ساعة", trim: true },
+    warrantyYears: { type: Number, default: 2, min: 0 },
     installment: {
       available:  { type: Boolean, default: false },
-      downPayment: Number,
+      downPayment: { type: Number, min: 0 },
       note:        String,
-      months:      Number,
+      months:      { type: Number, min: 0 },
       conditions:  [String],
       policy:      String,
     },
     taxIncluded:  { type: Boolean, default: true },
-    category:     { type: String },
-    subCategory:  { type: String },
-    brand:        { type: String },
+    category:     { type: String, trim: true },
+    subCategory:  { type: String, trim: true },
+    brand:        { type: String, trim: true },
     inStock:      { type: Boolean, default: true },
     status: {
       type:    String,

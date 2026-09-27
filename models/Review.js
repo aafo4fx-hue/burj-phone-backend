@@ -2,9 +2,18 @@ const mongoose = require("mongoose");
 
 const reviewSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    comment: { type: String, required: true },
-    rating: { type: Number, min: 1, max: 5, default: 5 },
+    name: { type: String, required: true, trim: true, maxlength: 100 },
+    comment: { type: String, required: true, trim: true, maxlength: 2000 },
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: 5,
+      validate: {
+        validator: Number.isInteger,
+        message: "التقييم يجب أن يكون عدداً صحيحاً",
+      },
+    },
     gender: { type: String, enum: ["male", "female"], default: "male" },
     approved: { type: Boolean, default: false },
   },
