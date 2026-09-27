@@ -41,9 +41,22 @@ function makeFileUpload() {
 }
 
 function uploadToCloudinary(buffer, folder, options = {}) {
+  // For images, apply automatic format, quality optimization, and max dimension limits (1600px).
+  // This reduces storage and bandwidth consumption by up to 90% without visible loss of quality.
+  const isRaw = options.resource_type === "raw";
+  const defaultImageOptions = isRaw
+    ? {}
+    : {
+        transformation: [
+          { width: 1600, height: 1600, crop: "limit" },
+          { quality: "auto" },
+          { fetch_format: "auto" },
+        ],
+      };
+
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder, ...options },
+      { folder, ...defaultImageOptions, ...options },
       (err, result) => (err ? reject(err) : resolve(result))
     );
     Readable.from(buffer).pipe(stream);

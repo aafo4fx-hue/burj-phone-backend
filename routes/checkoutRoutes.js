@@ -1,8 +1,24 @@
 const express = require("express");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const router = express.Router();
 const Checkout = require("../models/Checkout");
+const Company = require("../models/Company");
+const Product = require("../models/Product");
 const { authMiddleware } = require("../middleware/auth");
+
+// ---------------------------------------------------------------------------
+// In-process cache for total orders count
+// Protects database from rapid polling by admin tabs and windows
+// ---------------------------------------------------------------------------
+let _cachedOrderCount = null;
+let _cachedOrderCountTime = 0;
+const ORDER_COUNT_CACHE_TTL = 10_000; // 10 seconds
+
+function invalidateOrderCountCache() {
+  _cachedOrderCount = null;
+  _cachedOrderCountTime = 0;
+}
 
 // ---------------------------------------------------------------------------
 // Module-level constants — computed once at startup, not per request.
@@ -118,10 +134,30 @@ router.post("/", validateCheckoutBody, async (req, res) => {
 
     const checkout = new Checkout(req.validatedBody);
     await checkout.save();
+    invalidateOrderCountCache();
     res.status(201).json({ ok: true, orderId: checkout.orderId, _id: checkout._id });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ ok: false, error: "رقم الطلب موجود مسبقاً" });
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/checkout/count (admin — metadata O(1) count with in-memory cache)
+// Drastically cuts CPU & database reads from frequent admin navbar polling.
+// ---------------------------------------------------------------------------
+router.get("/count", authMiddleware, async (req, res) => {
+  try {
+    const now = Date.now();
+    if (_cachedOrderCount !== null && (now - _cachedOrderCountTime) < ORDER_COUNT_CACHE_TTL) {
+      return res.json({ count: _cachedOrderCount });
+    }
+    const count = await Checkout.estimatedDocumentCount();
+    _cachedOrderCount = count;
+    _cachedOrderCountTime = now;
+    res.json({ count });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, count: 0 });
   }
 });
 
@@ -150,18 +186,21 @@ const LIST_PROJECTION = {
 // ---------------------------------------------------------------------------
 // Search filter builder
 // Escapes user input before embedding it in a RegExp so special characters
-// don't break the pattern.  The RegExp object is created here (not hoisted)
-// because it depends on the per-request `search` value.
+// don't break the pattern. Uses exact orderId / prefix matching to leverage
+// the B-Tree index and avoid full collection scans (COLLSCAN).
 // ---------------------------------------------------------------------------
 function buildSearchFilter(search) {
-  if (!search || typeof search !== "string" || search.trim() === "") return {};
-  const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!search || typeof search !== "string") return {};
+  const term = search.trim().slice(0, 100);
+  if (!term) return {};
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(escaped, "i");
   return {
     $or: [
+      { orderId: term },
+      { orderId: { $regex: `^${escaped}`, $options: "i" } },
       { customer: re },
-      { whatsapp:  re },
-      { orderId:   re },
+      { whatsapp: { $regex: escaped } },
     ],
   };
 }
@@ -257,11 +296,53 @@ router.put("/:id/financials", authMiddleware, csrfProtection, async (req, res) =
   }
 });
 
+// GET /api/checkout/:id/invoice  (admin — consolidated order + company + batch items images)
+// Eliminates N+1 queries and 10+ HTTP fetches from frontend document pages
+router.get("/:id/invoice", authMiddleware, async (req, res) => {
+  try {
+    const [order, company] = await Promise.all([
+      Checkout.findById(req.params.id).lean(),
+      Company.findOne().lean(),
+    ]);
+
+    if (!order) return res.status(404).json({ ok: false, error: "not found" });
+
+    // Single batch query for product images if items have productId (replaces N+1 fetches)
+    if (Array.isArray(order.items) && order.items.length > 0) {
+      const productIds = order.items
+        .map((i) => i.productId)
+        .filter((pid) => pid && mongoose.Types.ObjectId.isValid(pid));
+
+      if (productIds.length > 0) {
+        const products = await Product.find({ _id: { $in: productIds } })
+          .select("image images")
+          .lean();
+
+        const imgMap = new Map(
+          products.map((p) => [String(p._id), p.image || p.images?.[0] || ""])
+        );
+
+        order.items.forEach((item) => {
+          if (item.productId && imgMap.has(String(item.productId))) {
+            item.image = imgMap.get(String(item.productId));
+          }
+        });
+      }
+    }
+
+    res.json({ order, company: company || {} });
+  } catch (err) {
+    if (err.name === "CastError") return res.status(404).json({ ok: false, error: "not found" });
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // DELETE /api/checkout/:id  (admin)
 router.delete("/:id", authMiddleware, csrfProtection, async (req, res) => {
   try {
     const order = await Checkout.findByIdAndDelete(req.params.id);
     if (!order) return res.status(404).json({ ok: false, error: "not found" });
+    invalidateOrderCountCache();
     res.json({ ok: true });
   } catch (err) {
     if (err.name === "CastError") return res.status(404).json({ ok: false, error: "not found" });

@@ -1,4 +1,5 @@
 const Product = require("../models/Product");
+const SubCategorySettings = require("../models/SubCategorySettings");
 
 // ---------------------------------------------------------------------------
 // In-process TTL cache for product queries (reduces MongoDB load & CPU)
@@ -153,12 +154,61 @@ async function arabicSubstringSearch(query, q) {
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/products/home
+// Optimized endpoint specifically for the storefront homepage.
+// Queries only products belonging to categories enabled for the home page (showInHome: true).
+// Drastically cuts DB scan time, transferred payload, and memory consumption.
+// ---------------------------------------------------------------------------
+exports.getHomeProducts = async (req, res) => {
+  try {
+    const cached = cacheGet("homeProducts");
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+      return res.json(cached);
+    }
+
+    // Get active home categories from SubCategorySettings
+    const settings = await SubCategorySettings.find({
+      category: { $ne: "__config__" },
+      showInHome: true,
+    })
+      .sort({ order: 1 })
+      .lean();
+
+    const homeCategories = settings.map((s) => s.category).filter(Boolean);
+
+    const query = homeCategories.length > 0 ? { category: { $in: homeCategories } } : {};
+
+    const products = await Product.find(query)
+      .select(LIST_FIELDS)
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const result = products.map(addDiscount);
+    cacheSet("homeProducts", result);
+
+    res.set("Cache-Control", "public, max-age=300, stale-while-revalidate=60");
+    return res.json(result);
+  } catch (err) {
+    console.error("[getHomeProducts] error:", err.message);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ---------------------------------------------------------------------------
 // GET /api/products
 // ---------------------------------------------------------------------------
 exports.getProducts = async (req, res) => {
   try {
     const { q, brand, category } = req.query;
     const limitParam = parseInt(req.query.limit) || 0;
+
+    const cacheKey = `list:${q || ""}:${brand || ""}:${category || ""}:${limitParam}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
+      return res.json(cached);
+    }
 
     const query = {};
     if (brand) {
@@ -174,8 +224,10 @@ exports.getProducts = async (req, res) => {
         .sort({ createdAt: 1 })
         .limit(effectiveLimit)
         .lean();
+      const result = products.map(addDiscount);
+      cacheSet(cacheKey, result);
       res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
-      return res.json(products.map(addDiscount));
+      return res.json(result);
     }
 
     // Search: try $text index first (fast, DB-side) then fall back to
@@ -187,16 +239,20 @@ exports.getProducts = async (req, res) => {
         .lean();
 
       if (results.length > 0) {
+        const result = results.map(addDiscount);
+        cacheSet(cacheKey, result);
         res.set("Cache-Control", "public, max-age=30");
-        return res.json(results.map(addDiscount));
+        return res.json(result);
       }
     } catch {
       // $text index missing or unavailable — fall through to substring scan.
     }
 
     const fallback = await arabicSubstringSearch(query, q);
+    const result = fallback.map(addDiscount);
+    cacheSet(cacheKey, result);
     res.set("Cache-Control", "public, max-age=30");
-    return res.json(fallback.map(addDiscount));
+    return res.json(result);
   } catch (err) {
     console.error("[getProducts] error:", err.message);
     res.status(500).json({ message: "Server error" });
@@ -208,12 +264,21 @@ exports.getProducts = async (req, res) => {
 // ---------------------------------------------------------------------------
 exports.getProduct = async (req, res) => {
   try {
+    const cacheKey = `single:${req.params.id}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
+      return res.json(cached);
+    }
+
     const product = await Product.findById(req.params.id)
       .select(DETAIL_FIELDS)
       .lean();
     if (!product) return res.status(404).json({ message: "Product not found" });
+    const result = addDiscount(product);
+    cacheSet(cacheKey, result);
     res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
-    res.json(addDiscount(product));
+    res.json(result);
   } catch (err) {
     if (err.name === "CastError") {
       return res.status(404).json({ message: "Product not found" });
@@ -232,6 +297,7 @@ exports.getProduct = async (req, res) => {
 exports.createProduct = async (req, res) => {
   try {
     const product = await Product.create(req.body);
+    invalidateProductsCache();
     res.status(201).json(product);
   } catch (err) {
     console.error("[createProduct] error:", err.message);
@@ -248,6 +314,7 @@ exports.updateProduct = async (req, res) => {
       new: true,
     });
     if (!product) return res.status(404).json({ message: "Product not found" });
+    invalidateProductsCache();
     res.json(product);
   } catch (err) {
     if (err.name === "CastError")
@@ -264,6 +331,7 @@ exports.deleteProduct = async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
+    invalidateProductsCache();
     res.json({ message: "Product deleted" });
   } catch (err) {
     if (err.name === "CastError")
@@ -272,3 +340,4 @@ exports.deleteProduct = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+

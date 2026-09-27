@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getProducts,
   getProduct,
+  getHomeProducts,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -10,6 +11,7 @@ const {
 const { authMiddleware } = require("../middleware/auth");
 
 // Public read endpoints — no auth required.
+router.get("/home", getHomeProducts);
 router.get("/", getProducts);
 router.get("/:id", getProduct);
 

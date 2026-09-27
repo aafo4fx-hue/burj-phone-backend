@@ -13,6 +13,7 @@ const CategoryBanner = require("../models/CategoryBanner");
 const CardFieldSettings = require("../models/CardFieldSettings");
 const { makeImageUpload, makeFileUpload, uploadToCloudinary, deleteFromCloudinary } = require("../config/cloudinary");
 const { authMiddleware } = require("../middleware/auth");
+const { invalidateProductsCache } = require("../controllers/productController");
 
 // ---------------------------------------------------------------------------
 // Module-level constants — computed once at startup, not per request.
@@ -70,6 +71,9 @@ function cacheSet(key, data) {
 
 function invalidateCache(...keys) {
   for (const k of keys) _cache.delete(k);
+  if (keys.some((k) => k.includes("Categor") || k.includes("product") || k.includes("homeSettings"))) {
+    try { invalidateProductsCache(); } catch { /* ignore */ }
+  }
 }
 
 // Invalidates all category-banner cache entries that contain `category`.
@@ -640,15 +644,20 @@ router.get("/sub-categories/extra", authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/admin/sub-categories  (admin)
+// GET /api/admin/sub-categories  (admin — cached to avoid repeated aggregations)
 router.get("/sub-categories", authMiddleware, async (req, res) => {
   try {
+    const cached = cacheGet("adminSubCategories");
+    if (cached) return res.json(cached);
+
     const result = await Product.aggregate([
       { $match: { category: { $ne: null, $exists: true } } },
       { $group: { _id: "$category", count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
     ]);
-    res.json(result.map((r) => ({ category: r._id, name: r._id, count: r.count })));
+    const formatted = result.map((r) => ({ category: r._id, name: r._id, count: r.count }));
+    cacheSet("adminSubCategories", formatted);
+    res.json(formatted);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
@@ -868,6 +877,16 @@ router.patch("/sub-categories/max", authMiddleware, async (req, res) => {
 // ============================================================
 // ORDERS
 // ============================================================
+
+// GET /api/admin/orders/count (lightweight metadata count)
+router.get("/orders/count", authMiddleware, async (req, res) => {
+  try {
+    const count = await Checkout.estimatedDocumentCount();
+    res.json({ count });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, count: 0 });
+  }
+});
 
 // GET /api/admin/orders
 router.get("/orders", authMiddleware, async (req, res) => {
@@ -1165,8 +1184,8 @@ router.post(
 
       const product = await Product.create(productData);
 
-      // A new product may introduce a new category — bust the cached list.
-      invalidateCache("adminCategories");
+      // A new product may introduce a new category or change counts — bust the cached list.
+      invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic");
 
       res.status(201).json(product);
     } catch (err) {
@@ -1273,6 +1292,9 @@ router.delete("/products/:id", authMiddleware, async (req, res) => {
       await Promise.all(toDelete.map((url) => deleteFromCloudinary(url)));
     }
 
+    // Invalidate categories and subcategories caches after product deletion
+    invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic");
+
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1326,17 +1348,24 @@ router.put(
         try { product.colors = JSON.parse(body.colors); } catch { /* ignore */ }
       }
 
-      // Run image/gallery uploads in parallel.
+      // Track previous images to delete removed ones from Cloudinary (preventing storage leaks).
+      const previousMainImage = product.image;
+      const previousGallery   = Array.isArray(product.images) ? [...product.images] : [];
+
+      // Run image/gallery uploads and removals in parallel.
       const uploadPromises = [];
-      const galleryUrls = [];
+      const galleryUrls    = [];
 
       if (req.files?.image?.[0]) {
         uploadPromises.push(
-          deleteFromCloudinary(product.image).then(() =>
+          deleteFromCloudinary(previousMainImage).then(() =>
             uploadToCloudinary(req.files.image[0].buffer, "products")
           ).then((r) => { product.image = r.secure_url; })
         );
       } else if (body.imageUrl !== undefined) {
+        if (body.imageUrl !== previousMainImage && previousMainImage) {
+          uploadPromises.push(deleteFromCloudinary(previousMainImage));
+        }
         product.image = body.imageUrl;
       }
 
@@ -1351,6 +1380,14 @@ router.put(
         }
       }
 
+      // If gallery was updated, identify and delete any removed Cloudinary images
+      if (body.galleryUrls !== undefined || req.files?.galleryFiles) {
+        const removedGalleryImages = previousGallery.filter((url) => url && !galleryUrls.includes(url));
+        for (const url of removedGalleryImages) {
+          uploadPromises.push(deleteFromCloudinary(url));
+        }
+      }
+
       if (uploadPromises.length) await Promise.all(uploadPromises);
       if (body.galleryUrls !== undefined || req.files?.galleryFiles) {
         product.images = galleryUrls;
@@ -1358,8 +1395,8 @@ router.put(
 
       await product.save();
 
-      // Category may have changed — invalidate the cached distinct list.
-      invalidateCache("adminCategories");
+      // Category or counts may have changed — invalidate caches.
+      invalidateCache("adminCategories", "adminSubCategories", "subCategoriesPublic");
 
       res.json(product);
     } catch (err) {
