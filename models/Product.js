@@ -155,6 +155,9 @@ productSchema.index({ createdAt: -1 });
 productSchema.index({ category: 1, inStock: 1 });
 productSchema.index({ brand: 1, inStock: 1 });
 productSchema.index({ category: 1, brand: 1 });
+productSchema.index({ category: 1, createdAt: -1 });
+productSchema.index({ brand: 1, createdAt: -1 });
+productSchema.index({ subCategory: 1, createdAt: -1 });
 productSchema.index({ subCategory: 1 });
 productSchema.index({ name: "text", category: "text", subCategory: "text", brand: "text" });
 

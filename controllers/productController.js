@@ -58,7 +58,9 @@ function normalizeArabic(str) {
 // ---------------------------------------------------------------------------
 function buildCategoryQuery(category) {
   const cat = category.trim();
-  const normalizedCat = cat
+  // Escape regex special chars first to prevent ReDoS and invalid pattern crashes
+  const escaped = cat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const normalizedCat = escaped
     .replace(/[أإآ]/g, "ا")
     .replace(/[ىي]/g, "ي")
     .replace(/ة/g, "ه")
@@ -127,7 +129,10 @@ exports.getProducts = async (req, res) => {
     const limitParam = parseInt(req.query.limit) || 0;
 
     const query = {};
-    if (brand)    query.brand    = { $regex: new RegExp(`^${brand}$`, "i") };
+    if (brand) {
+      const escapedBrand = brand.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      query.brand = { $regex: new RegExp(`^${escapedBrand}$`, "i") };
+    }
     if (category) query.category = buildCategoryQuery(category);
 
     if (!q) {
@@ -137,6 +142,7 @@ exports.getProducts = async (req, res) => {
         .sort({ createdAt: 1 })
         .limit(effectiveLimit)
         .lean();
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
       return res.json(products.map(addDiscount));
     }
 
@@ -148,12 +154,16 @@ exports.getProducts = async (req, res) => {
         .limit(SEARCH_MAX_RESULTS)
         .lean();
 
-      if (results.length > 0) return res.json(results.map(addDiscount));
+      if (results.length > 0) {
+        res.set("Cache-Control", "public, max-age=30");
+        return res.json(results.map(addDiscount));
+      }
     } catch {
       // $text index missing or unavailable — fall through to substring scan.
     }
 
     const fallback = await arabicSubstringSearch(query, q);
+    res.set("Cache-Control", "public, max-age=30");
     return res.json(fallback.map(addDiscount));
   } catch (err) {
     console.error("[getProducts] error:", err.message);
@@ -170,6 +180,7 @@ exports.getProduct = async (req, res) => {
       .select(DETAIL_FIELDS)
       .lean();
     if (!product) return res.status(404).json({ message: "Product not found" });
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
     res.json(addDiscount(product));
   } catch (err) {
     if (err.name === "CastError") {

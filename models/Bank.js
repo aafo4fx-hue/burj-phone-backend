@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
 
 const bankSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  iban: { type: String, required: true },
+  name: { type: String, required: true, trim: true, maxlength: 100 },
+  iban: { type: String, required: true, trim: true, uppercase: true, maxlength: 50 },
   logo: { type: String, default: "" },
 }, { timestamps: true });
 

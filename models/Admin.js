@@ -7,11 +7,13 @@ const adminSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      maxlength: 100,
     },
     phone: {
       type: String,
       required: true,
       trim: true,
+      maxlength: 30,
     },
     email: {
       type: String,
@@ -19,11 +21,13 @@ const adminSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      maxlength: 150,
     },
     password: {
       type: String,
       required: true,
       minlength: 8,
+      select: false,
     },
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },

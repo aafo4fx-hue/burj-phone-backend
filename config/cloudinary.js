@@ -15,6 +15,13 @@ const memoryStorage = multer.memoryStorage();
 const imageUpload = multer({
   storage: memoryStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("الملف المرفوع يجب أن يكون صورة فقط"));
+    }
+  },
 });
 
 const fileUpload = multer({
@@ -48,9 +55,11 @@ async function deleteFromCloudinary(url, resource_type = "image") {
   try {
     const parts = url.split("/");
     const uploadIndex = parts.indexOf("upload");
+    if (uploadIndex === -1) return;
     let pathParts = parts.slice(uploadIndex + 1);
     if (/^v\d+$/.test(pathParts[0])) pathParts = pathParts.slice(1);
     const publicId = pathParts.join("/").replace(/\.[^/.]+$/, "");
+    if (!publicId) return;
     await cloudinary.uploader.destroy(publicId, { resource_type });
   } catch (e) {
     console.error("Cloudinary delete error:", e.message);

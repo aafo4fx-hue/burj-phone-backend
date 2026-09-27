@@ -1,17 +1,27 @@
 const mongoose = require("mongoose");
 
+const footerItemSubSchema = new mongoose.Schema(
+  {
+    image: { type: String, default: "" },
+    linkType: { type: String, default: "link" },
+    link: { type: String, default: "" },
+    file: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const companySchema = new mongoose.Schema({
-  nameAr: { type: String, default: "" },
-  nameEn: { type: String, default: "" },
-  addressAr: { type: String, default: "" },
-  addressEn: { type: String, default: "" },
-  phone: { type: String, default: "" },
-  whatsapp: { type: String, default: "" },
-  website: { type: String, default: "" },
-  email: { type: String, default: "" },
-  currencyAr: { type: String, default: "" },
-  currencyEn: { type: String, default: "" },
-  taxNumber: { type: String, default: "" },
+  nameAr: { type: String, default: "", trim: true },
+  nameEn: { type: String, default: "", trim: true },
+  addressAr: { type: String, default: "", trim: true },
+  addressEn: { type: String, default: "", trim: true },
+  phone: { type: String, default: "", trim: true },
+  whatsapp: { type: String, default: "", trim: true },
+  website: { type: String, default: "", trim: true },
+  email: { type: String, default: "", trim: true, lowercase: true },
+  currencyAr: { type: String, default: "", trim: true },
+  currencyEn: { type: String, default: "", trim: true },
+  taxNumber: { type: String, default: "", trim: true },
   shippingCompany: { type: String, default: "" },
   paymentMethod: { type: String, default: "" },
   details: { type: String, default: "" },
@@ -30,14 +40,7 @@ const companySchema = new mongoose.Schema({
   link2: { type: String, default: "" },
   link2Type: { type: String, default: "link" },
   file2: { type: String, default: "" },
-  footerItems: [
-    {
-      image: { type: String, default: "" },
-      linkType: { type: String, default: "link" },
-      link: { type: String, default: "" },
-      file: { type: String, default: "" },
-    }
-  ],
+  footerItems: [footerItemSubSchema],
 }, { timestamps: true });
 
 module.exports = mongoose.model("Company", companySchema);

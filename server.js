@@ -2,7 +2,9 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const compression = require("compression");
 const connectDB = require("./config/db");
+const mongoose = require("mongoose");
 const productRoutes = require("./routes/productRoutes");
 const checkoutRoutes = require("./routes/checkoutRoutes");
 const adminRoutes = require("./routes/adminRoutes");
@@ -10,6 +12,11 @@ const adminRoutes = require("./routes/adminRoutes");
 connectDB();
 
 const app = express();
+const isProd = process.env.NODE_ENV === "production";
+
+// Compress all HTTP response payloads (reduces egress bandwidth by 60-70%).
+app.use(compression());
+
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
   .split(",").map((o) => o.trim());
 
@@ -66,8 +73,18 @@ app.use("/api/admin/login", (req, res, next) => {
   next();
 });
 
+// Root & lightweight health endpoints
 app.get("/", (req, res) => {
   res.json({ message: "API is running..." });
+});
+
+app.get("/health", (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+  res.status(dbStatus === "connected" ? 200 : 503).json({
+    status: dbStatus === "connected" ? "healthy" : "unhealthy",
+    db: dbStatus,
+    uptimeSeconds: Math.floor(process.uptime()),
+  });
 });
 
 app.get("/.well-known/appspecific/com.chrome.devtools.json", (req, res) => {
@@ -78,8 +95,55 @@ app.use("/api/products", productRoutes);
 app.use("/api/checkout", checkoutRoutes);
 app.use("/api/admin", adminRoutes);
 
+// Centralized JSON error handler
+// Ensures all errors (Multer file limits, CORS, syntax errors) return JSON
+// and never leak stack traces to clients in production.
+app.use((err, req, res, next) => {
+  if (err.name === "MulterError") {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "حجم الملف كبير جداً" });
+    }
+    return res.status(400).json({ error: `خطأ في رفع الملف: ${err.message}` });
+  }
+
+  if (err.message === "Not allowed by CORS") {
+    return res.status(403).json({ error: "غير مصرح به عبر CORS" });
+  }
+
+  const statusCode = err.status || err.statusCode || 500;
+  const message = isProd && statusCode === 500 ? "خطأ في الخادم" : err.message || "خطأ في الخادم";
+
+  console.error(`[Error] ${req.method} ${req.url}:`, err.message);
+  res.status(statusCode).json({ error: message });
+});
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Graceful Shutdown: safely close server and database connections on restart/termination
+const gracefulShutdown = async (signal) => {
+  console.log(`Received ${signal}. Starting graceful shutdown...`);
+  server.close(async () => {
+    console.log("HTTP server closed.");
+    try {
+      await mongoose.connection.close(false);
+      console.log("MongoDB connection closed.");
+      process.exit(0);
+    } catch (dbErr) {
+      console.error("Error closing MongoDB connection:", dbErr.message);
+      process.exit(1);
+    }
+  });
+
+  // Force shutdown after 10s if connections remain open
+  setTimeout(() => {
+    console.error("Could not close connections in time, forcefully shutting down");
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Prevent silent crashes from unhandled promise rejections.
 process.on("unhandledRejection", (reason) => {

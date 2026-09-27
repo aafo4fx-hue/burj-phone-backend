@@ -12,12 +12,13 @@ const connectDB = async () => {
     }
 
     await mongoose.connect(process.env.MONGO_URI, {
-      // Limit the connection pool to avoid over-allocating connections on a
-      // single-process Node.js server. Default is 5; 10 is a safe upper bound
-      // for this workload without exhausting Atlas free-tier connection limits.
+      // Allow pool to scale down to 0 during idle periods to assist scale-to-zero
+      minPoolSize: 0,
+      // Limit the connection pool to avoid over-allocating connections on Atlas free-tier
       maxPoolSize: 10,
-      // Drop connections that have been idle for more than 60 s so the pool
+      // Drop connections that have been idle for more than 30 s so the pool
       // doesn't hold stale sockets against MongoDB Atlas.
+      maxIdleTimeMS: 30000,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });

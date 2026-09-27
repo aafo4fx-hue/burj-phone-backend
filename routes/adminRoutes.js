@@ -48,16 +48,24 @@ const DEFAULT_BANNERS = Object.freeze(Array.from({ length: 5 }, () => ({ url: ""
 // invalidateCache(key) to ensure stale data is not served.
 // ---------------------------------------------------------------------------
 const TTL_MS = 60_000; // 60 seconds
+const MAX_CACHE_ENTRIES = 200; // Cap cache entries to prevent memory leaks from arbitrary queries
 const _cache = new Map(); // key → { data, expiresAt }
 
 function cacheGet(key) {
   const entry = _cache.get(key);
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) { _cache.delete(key); return null; }
+  // Refresh recency in Map (LRU behavior)
+  _cache.delete(key);
+  _cache.set(key, entry);
   return entry.data;
 }
 
 function cacheSet(key, data) {
+  // Evict oldest entry if capacity is reached
+  if (_cache.size >= MAX_CACHE_ENTRIES) {
+    _cache.delete(_cache.keys().next().value);
+  }
   _cache.set(key, { data, expiresAt: Date.now() + TTL_MS });
 }
 
@@ -88,7 +96,7 @@ router.post("/login", async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ error: "البريد والكلمة مطلوبان" });
 
-    const admin = await Admin.findOne({ email });
+    const admin = await Admin.findOne({ email }).select("+password");
     // Return the same generic error whether the email exists or not —
     // avoids user-enumeration.
     if (!admin) return res.status(401).json({ error: "بيانات غير صحيحة" });
