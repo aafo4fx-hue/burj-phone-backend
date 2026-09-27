@@ -420,12 +420,14 @@ router.post("/banners/upload/:index", authMiddleware, upload.single("image"), as
       return res.status(400).json({ error: "رقم بانر غير صحيح" });
     if (!req.file) return res.status(400).json({ error: "لم يتم رفع صورة" });
     const old = doc.banners[index]?.url;
-    await deleteFromCloudinary(old);
     const result = await uploadToCloudinary(req.file.buffer, "banners");
     const url = result.secure_url;
     doc.banners.set(index, { url, active: doc.banners[index].active });
     await doc.save();
     invalidateCache("banners");
+    if (old && old !== url) {
+      deleteFromCloudinary(old).catch((e) => console.error("Cloudinary delete old banner error:", e.message));
+    }
     res.json({ url });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -490,10 +492,13 @@ router.delete("/banners/:index/image", authMiddleware, async (req, res) => {
     if (!doc) return res.json({ success: true });
     if (isNaN(index) || index < 0 || index >= doc.banners.length)
       return res.status(400).json({ error: "رقم بانر غير صحيح" });
-    await deleteFromCloudinary(doc.banners[index]?.url);
-    doc.banners.set(index, { url: "", active: doc.banners[index].active });
+    const old = doc.banners[index]?.url;
+    doc.banners.set(index, { url: "", active: false });
     await doc.save();
     invalidateCache("banners");
+    if (old) {
+      deleteFromCloudinary(old).catch((e) => console.error("Cloudinary delete banner image error:", e.message));
+    }
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -508,10 +513,13 @@ router.delete("/banners/:index", authMiddleware, async (req, res) => {
     if (!doc) return res.json({ success: true });
     if (isNaN(index) || index < 0 || index >= doc.banners.length)
       return res.status(400).json({ error: "رقم بانر غير صحيح" });
-    await deleteFromCloudinary(doc.banners[index]?.url);
+    const old = doc.banners[index]?.url;
     doc.banners.splice(index, 1);
     await doc.save();
     invalidateCache("banners");
+    if (old) {
+      deleteFromCloudinary(old).catch((e) => console.error("Cloudinary delete banner slot error:", e.message));
+    }
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1163,10 +1171,15 @@ router.get("/reviews", async (req, res) => {
 router.get("/reviews/all", authMiddleware, async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 100));
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 100));
     const skip  = (page - 1) * limit;
     const [reviews, total] = await Promise.all([
-      Review.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Review.find()
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select("name comment rating gender approved createdAt")
+        .lean(),
       Review.countDocuments(),
     ]);
     res.json({ reviews, total, page, pages: Math.ceil(total / limit) });
@@ -1755,14 +1768,22 @@ router.get("/category-banners-bulk", async (req, res) => {
   }
 });
 
-// GET /api/admin/category-banners/:category  (public)
-// NOTE: removed auto-create on read to eliminate write-on-read latency spike.
-// If the category has no banners document, return an empty array directly.
+// GET /api/admin/category-banners/:category  (public — cached)
+// NOTE: cached per category in memory with 60s TTL to prevent repeated DB round-trips.
 router.get("/category-banners/:category", async (req, res) => {
   try {
-    const doc = await CategoryBanner.findOne({ category: req.params.category }).lean();
+    const { category } = req.params;
+    const cacheKey = "catBanner:" + category;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=60");
+      return res.json(cached);
+    }
+    const doc = await CategoryBanner.findOne({ category }).lean();
+    const data = doc ? doc.banners : [];
+    cacheSet(cacheKey, data);
     res.set("Cache-Control", "public, max-age=60");
-    res.json(doc ? doc.banners : []);
+    res.json(data);
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
@@ -1778,12 +1799,15 @@ router.post("/category-banners/:category/upload/:index", authMiddleware, upload.
     if (isNaN(index) || index < 0 || index >= doc.banners.length)
       return res.status(400).json({ error: "رقم بانر غير صحيح" });
     if (!req.file) return res.status(400).json({ error: "لم يتم رفع صورة" });
-    await deleteFromCloudinary(doc.banners[index]?.url);
+    const old = doc.banners[index]?.url;
     const result = await uploadToCloudinary(req.file.buffer, "category-banners");
     doc.banners.set(index, { url: result.secure_url, active: doc.banners[index].active });
     await doc.save();
-    // Invalidate all bulk-banner cache entries for this category.
+    // Invalidate all bulk-banner and single-banner cache entries for this category.
     invalidateCategoryBannerCache(category);
+    if (old && old !== result.secure_url) {
+      deleteFromCloudinary(old).catch((e) => console.error("Cloudinary delete old category banner error:", e.message));
+    }
     res.json({ url: result.secure_url });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1834,10 +1858,13 @@ router.delete("/category-banners/:category/:index/image", authMiddleware, async 
     if (!doc) return res.json({ success: true });
     if (isNaN(index) || index < 0 || index >= doc.banners.length)
       return res.status(400).json({ error: "رقم بانر غير صحيح" });
-    await deleteFromCloudinary(doc.banners[index]?.url);
-    doc.banners.set(index, { url: "", active: doc.banners[index].active });
+    const old = doc.banners[index]?.url;
+    doc.banners.set(index, { url: "", active: false });
     await doc.save();
     invalidateCategoryBannerCache(category);
+    if (old) {
+      deleteFromCloudinary(old).catch((e) => console.error("Cloudinary delete category banner image error:", e.message));
+    }
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
@@ -1853,10 +1880,13 @@ router.delete("/category-banners/:category/:index", authMiddleware, async (req, 
     if (!doc) return res.json({ success: true });
     if (isNaN(index) || index < 0 || index >= doc.banners.length)
       return res.status(400).json({ error: "رقم بانر غير صحيح" });
-    await deleteFromCloudinary(doc.banners[index]?.url);
+    const old = doc.banners[index]?.url;
     doc.banners.splice(index, 1);
     await doc.save();
     invalidateCategoryBannerCache(category);
+    if (old) {
+      deleteFromCloudinary(old).catch((e) => console.error("Cloudinary delete category banner slot error:", e.message));
+    }
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });

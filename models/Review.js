@@ -22,5 +22,7 @@ const reviewSchema = new mongoose.Schema(
 
 // Public endpoint filters on approved=true and sorts by createdAt desc.
 reviewSchema.index({ approved: 1, createdAt: -1 });
+// Admin endpoint sorts all reviews by createdAt desc without filtering by approved
+reviewSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Review", reviewSchema);
