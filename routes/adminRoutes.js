@@ -1191,7 +1191,7 @@ router.get("/reviews", async (req, res) => {
 router.get("/reviews/all", authMiddleware, async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 100));
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
     const skip  = (page - 1) * limit;
     const [reviews, total] = await Promise.all([
       Review.find()
@@ -1332,7 +1332,7 @@ const ADMIN_EDIT_PROJECTION =
 router.post(
   "/products",
   authMiddleware,
-  upload.fields([{ name: "image", maxCount: 1 }, { name: "galleryFiles", maxCount: 20 }]),
+  upload.fields([{ name: "image", maxCount: 1 }, { name: "galleryFiles", maxCount: 10 }]),
   async (req, res) => {
     try {
       const body = req.body;
@@ -1526,7 +1526,7 @@ router.delete("/products/:id", authMiddleware, async (req, res) => {
 router.put(
   "/products/:id",
   authMiddleware,
-  upload.fields([{ name: "image", maxCount: 1 }, { name: "galleryFiles", maxCount: 20 }]),
+  upload.fields([{ name: "image", maxCount: 1 }, { name: "galleryFiles", maxCount: 10 }]),
   async (req, res) => {
     try {
       const product = await Product.findById(req.params.id);

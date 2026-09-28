@@ -34,11 +34,8 @@ const checkoutSchema = new mongoose.Schema(
 // Supports paginated admin order listing (sort by createdAt desc).
 checkoutSchema.index({ createdAt: -1 });
 
-// Supports status-filtered order listing with sort (avoids in-memory sorting).
+// Supports status-filtered order listing with sort and status-only lookups (via prefix).
 checkoutSchema.index({ status: 1, createdAt: -1 });
-
-// Supports status-filtered counts and lookups (e.g. filter pending orders).
-checkoutSchema.index({ status: 1 });
 
 // Supports server-side search by customer name and phone.
 checkoutSchema.index({ customer: 1 });

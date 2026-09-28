@@ -113,19 +113,27 @@ function buildCategoryQuery(category) {
 // on the (indexed) name field using only the ASCII-safe portion of the query.
 // This lets the server-side index reduce the scan set before data hits Node.
 // ---------------------------------------------------------------------------
-const SEARCH_SCAN_LIMIT  = 500;
+const SEARCH_SCAN_LIMIT  = 100;
 const SEARCH_MAX_RESULTS = 30;
 
-async function arabicSubstringSearch(query, q) {
-  const normalized = normalizeArabic(q);
+function buildArabicSubstringPattern(str) {
+  const trimmed = str.trim();
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return escaped
+    .replace(/[أإآا]/g, "[أإآا]")
+    .replace(/[ىي]/g, "[ىي]")
+    .replace(/[ةه]/g, "[ةه]")
+    .replace(/[ؤو]/g, "[ؤو]")
+    .replace(/[ئ]/g, "[ئ]");
+}
 
-  // Attempt a cheap server-side pre-filter: regex on name with the raw query.
-  // If it returns results we skip the full 500-doc scan entirely.
+async function arabicSubstringSearch(query, q) {
+  // Attempt server-side regex with Arabic character variants to resolve directly in MongoDB engine
   try {
-    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = buildArabicSubstringPattern(q);
     const regexResults = await Product.find({
       ...query,
-      name: { $regex: escaped, $options: "i" },
+      name: { $regex: pattern, $options: "i" },
     })
       .select(LIST_FIELDS)
       .limit(SEARCH_MAX_RESULTS)
@@ -133,10 +141,11 @@ async function arabicSubstringSearch(query, q) {
 
     if (regexResults.length > 0) return regexResults;
   } catch {
-    // regex pre-filter failed — fall through to full in-process scan.
+    // regex failed — fall through to in-process scan.
   }
 
-  // Full Arabic-normalised in-process scan as last resort.
+  // Bounded in-process scan as last resort (capped at 100 docs to avoid event-loop blocking).
+  const normalized = normalizeArabic(q);
   const docs = await Product.find(query)
     .select(LIST_FIELDS)
     .sort({ createdAt: 1 })
@@ -182,6 +191,7 @@ exports.getHomeProducts = async (req, res) => {
     const products = await Product.find(query)
       .select(LIST_FIELDS)
       .sort({ createdAt: 1 })
+      .limit(100)
       .lean();
 
     const result = products.map(addDiscount);
@@ -225,7 +235,7 @@ exports.getProducts = async (req, res) => {
     }
 
     if (!q) {
-      const effectiveLimit = limitParam > 0 ? limitParam : 500;
+      const effectiveLimit = limitParam > 0 ? Math.min(limitParam, 200) : 100;
       const products = await Product.find(query)
         .select(LIST_FIELDS)
         .sort({ createdAt: 1 })

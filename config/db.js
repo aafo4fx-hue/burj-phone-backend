@@ -1,6 +1,15 @@
 const mongoose = require("mongoose");
 
+let cached = global.mongoose;
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
+  if (cached.conn) {
+    return cached.conn;
+  }
+
   try {
     // Warn at startup if using the default insecure JWT secret.
     if (
@@ -11,19 +20,27 @@ const connectDB = async () => {
       console.warn("[SECURITY WARNING] JWT_SECRET is using the default insecure value. Change it in .env before going to production!");
     }
 
-    await mongoose.connect(process.env.MONGO_URI, {
-      // Allow pool to scale down to 0 during idle periods to assist scale-to-zero
-      minPoolSize: 0,
-      // Limit the connection pool to avoid over-allocating connections on Atlas free-tier
-      maxPoolSize: 10,
-      // Drop connections that have been idle for more than 30 s so the pool
-      // doesn't hold stale sockets against MongoDB Atlas.
-      maxIdleTimeMS: 30000,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
-    console.log("MongoDB connected");
+    if (!cached.promise) {
+      cached.promise = mongoose.connect(process.env.MONGO_URI, {
+        // Allow pool to scale down to 0 during idle periods to assist scale-to-zero
+        minPoolSize: 0,
+        // Limit the connection pool to avoid over-allocating connections on Atlas free-tier
+        maxPoolSize: 10,
+        // Drop connections that have been idle for more than 30 s so the pool
+        // doesn't hold stale sockets against MongoDB Atlas.
+        maxIdleTimeMS: 30000,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+      }).then((instance) => {
+        console.log("MongoDB connected");
+        return instance;
+      });
+    }
+
+    cached.conn = await cached.promise;
+    return cached.conn;
   } catch (err) {
+    cached.promise = null;
     console.error("MongoDB connection error:", err.message);
     process.exit(1);
   }
