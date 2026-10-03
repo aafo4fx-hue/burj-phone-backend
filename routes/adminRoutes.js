@@ -131,17 +131,17 @@ router.post("/login", async (req, res) => {
     const token = jwt.sign(
       { id: admin._id, email: admin.email },
       process.env.JWT_SECRET,
-      { expiresIn: "8h" }
+      { expiresIn: "7d" }
     );
 
     res
       .cookie("admin_token", token, {
         httpOnly:  true,
         secure:    isProd,
-        sameSite:  isProd ? "none" : "lax",
-        maxAge:    8 * 60 * 60 * 1000,
+        sameSite:  "lax",
+        maxAge:    7 * 24 * 60 * 60 * 1000,
       })
-      .json({ success: true });
+      .json({ success: true, token });
   } catch {
     res.status(500).json({ error: "خطأ في الخادم" });
   }
@@ -152,7 +152,8 @@ router.post("/logout", (req, res) => {
   res.clearCookie("admin_token", {
     httpOnly: true,
     secure:   isProd,
-    sameSite: isProd ? "none" : "lax",
+    sameSite: "lax",
+    path:     "/",
   }).json({ success: true });
 });
 
